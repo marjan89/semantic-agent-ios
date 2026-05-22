@@ -1,0 +1,33 @@
+{
+  "": {
+    "swift-dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/primary.swiftdeps"
+  },
+  "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/HTTPServer.swift": {
+    "dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer.d",
+    "object": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer.swift.o",
+    "swiftmodule": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer~partial.swiftmodule",
+    "swift-dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer.swiftdeps",
+    "diagnostics": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer.dia"
+  },
+  "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/SemanticAgent.swift": {
+    "dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent.d",
+    "object": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent.swift.o",
+    "swiftmodule": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent~partial.swiftmodule",
+    "swift-dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent.swiftdeps",
+    "diagnostics": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent.dia"
+  },
+  "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/ViewWalker.swift": {
+    "dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker.d",
+    "object": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker.swift.o",
+    "swiftmodule": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker~partial.swiftmodule",
+    "swift-dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker.swiftdeps",
+    "diagnostics": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker.dia"
+  },
+  "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/YAMLEmitter.swift": {
+    "dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter.d",
+    "object": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter.swift.o",
+    "swiftmodule": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter~partial.swiftmodule",
+    "swift-dependencies": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter.swiftdeps",
+    "diagnostics": "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter.dia"
+  }
+}

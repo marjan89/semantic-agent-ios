@@ -1,0 +1,3 @@
+module SemanticAgent {
+    header "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/include/SemanticAgent-Swift.h"
+}

@@ -1,0 +1,276 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.SemanticAgent-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode-26.4.1.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/sources",
+      "importPath" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/HTTPServer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/SemanticAgent.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/ViewWalker.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/YAMLEmitter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/swift-version--32010AED7ABC631F.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "SemanticAgent",
+      "moduleOutputPath" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/Modules/SemanticAgent.swiftmodule",
+      "objects" : [
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer.swift.o",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent.swift.o",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker.swift.o",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx10.13",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j12",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/include/SemanticAgent-Swift.h",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+        "-F",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-sdk",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+        "-target",
+        "arm64-apple-ios16.0-simulator",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "semantic_agent"
+      ],
+      "outputFileMapPath" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/HTTPServer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/SemanticAgent.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/ViewWalker.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/YAMLEmitter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/Modules/SemanticAgent.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/HTTPServer.swift",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/SemanticAgent.swift",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/ViewWalker.swift",
+        "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/YAMLEmitter.swift"
+      ],
+      "tempsPath" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "SemanticAgent" : [
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "SemanticAgent",
+      "-package-name",
+      "semantic_agent",
+      "-c",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/HTTPServer.swift",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/SemanticAgent.swift",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/ViewWalker.swift",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/YAMLEmitter.swift",
+      "-I",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx10.13",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j12",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/include/SemanticAgent-Swift.h",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+      "-F",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-sdk",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+      "-target",
+      "arm64-apple-ios16.0-simulator",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "semantic_agent",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode-26.4.1.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "SemanticAgent" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/HTTPServer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/SemanticAgent.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/ViewWalker.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/Sources/SemanticAgent/YAMLEmitter.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/SemanticAgent.build/sources"
+    },
+    "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/swift-version--32010AED7ABC631F.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode-26.4.1.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/Shared/projects/substrate-distro/device-control-ios/semantic-agent/.build/arm64-apple-macosx/debug/swift-version--32010AED7ABC631F.txt"
+    }
+  }
+}
