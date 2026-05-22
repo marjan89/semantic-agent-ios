@@ -20,68 +20,26 @@ enum SemanticYAMLEmitter {
                 y += "  platform_id: \(esc(el.platformId))\n"
             }
             y += "  type: \(el.semanticType)\n"
-            if let c = el.content {
-                y += "  content: \(esc(c))\n"
-            }
-            if let f = el.font {
-                y += "  font:\n"
-                y += "    family: \(f.family)\n"
-                y += "    weight: \(f.weight)\n"
-                y += "    size: \(f.size)\n"
-            }
-            if let c = el.color {
-                y += "  color: '\(c)'\n"
-            }
-            if let bg = el.backgroundColor {
-                y += "  background: '\(bg)'\n"
-            }
             y += "  bounds:\n"
             y += "    x: \(Int(el.bounds.origin.x))\n"
             y += "    y: \(Int(el.bounds.origin.y))\n"
             y += "    w: \(Int(el.bounds.width))\n"
             y += "    h: \(Int(el.bounds.height))\n"
+            y += "  z_index: \(el.zIndex)\n"
+            if let c = el.content {
+                y += "  content: \(esc(c))\n"
+            }
+            if let r = el.render {
+                y += "  render: \(r)\n"
+            }
             y += "  clickable: \(el.clickable)\n"
-            if el.cornerRadius > 0 {
-                y += "  corner_radius: \(Int(el.cornerRadius))\n"
+            y += "  enabled: \(el.enabled)\n"
+            y += "  accessible: \(el.accessible)\n"
+            if let al = el.a11yLabel, !al.isEmpty {
+                y += "  a11y_label: \(esc(al))\n"
             }
-            if let p = el.padding {
-                y += "  padding:\n"
-                y += "    top: \(Int(p.top))\n"
-                y += "    bottom: \(Int(p.bottom))\n"
-                y += "    start: \(Int(p.left))\n"
-                y += "    end: \(Int(p.right))\n"
-            }
-            if let icon = el.iconName {
-                y += "  icon:\n"
-                y += "    name: \(esc(icon))\n"
-                y += "    format: unknown\n"
-            }
-            if let clip = el.clipShape {
-                y += "  clip: \(clip)\n"
-            }
-            if let children = el.children, !children.isEmpty {
-                y += "  children:\n"
-                for child in children {
-                    y += "  - id: \(esc(child.id))\n"
-                    y += "    type: \(child.semanticType)\n"
-                    if let c = child.content {
-                        y += "    content: \(esc(c))\n"
-                    }
-                    if let f = child.font {
-                        y += "    font:\n"
-                        y += "      family: \(f.family)\n"
-                        y += "      weight: \(f.weight)\n"
-                        y += "      size: \(f.size)\n"
-                    }
-                    if let c = child.color {
-                        y += "    color: '\(c)'\n"
-                    }
-                    y += "    bounds:\n"
-                    y += "      x: \(Int(child.bounds.origin.x))\n"
-                    y += "      y: \(Int(child.bounds.origin.y))\n"
-                    y += "      w: \(Int(child.bounds.width))\n"
-                    y += "      h: \(Int(child.bounds.height))\n"
-                }
+            if let ai = el.a11yId, !ai.isEmpty {
+                y += "  a11y_id: \(esc(ai))\n"
             }
         }
 
