@@ -3,7 +3,7 @@ import UIKit
 
 enum SemanticYAMLEmitter {
 
-    static func emit(elements: [SemanticUIElement], screen: String, device: String) -> String {
+    static func emit(elements: [SemanticElement], screen: String, device: String) -> String {
         let ts = ISO8601DateFormatter().string(from: Date())
 
         var y = ""

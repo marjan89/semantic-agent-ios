@@ -3,52 +3,45 @@ import UIKit
 import MapKit
 import WebKit
 
-struct SemanticUIElement {
-    let id: String
-    let platformId: String
-    let semanticType: String
-    let content: String?
-    let bounds: CGRect
-    let zIndex: Int
-    let clickable: Bool
-    let enabled: Bool
-    let render: String?
-    let accessible: Bool
-    let a11yLabel: String?
-    let a11yId: String?
+struct WalkResult {
+    let elements: [SemanticElement]
+    let screenName: String
+    let deviceName: String
+    let log: String
 }
 
-final class SemanticViewWalker {
+final class SemanticWalker {
 
-    private var elements: [SemanticUIElement] = []
+    private var elements: [SemanticElement] = []
     private var globalZ = 0
-    private(set) var walkLog: String = ""
+    private var log = ""
 
-    func walk() -> (elements: [SemanticUIElement], screenName: String, deviceName: String) {
+    func walk() -> WalkResult {
         elements.removeAll()
         globalZ = 0
-        walkLog = ""
+        log = ""
 
         guard let window = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .flatMap(\.windows)
-            .first(where: \.isKeyWindow) else {
-            walkLog += "SKIP: no key window found\n"
-            return ([], "unknown", UIDevice.current.name)
+            .first(where: { $0.isKeyWindow && !($0 is OverlayWindow) }) else {
+            log += "SKIP: no key window found\n"
+            return WalkResult(elements: [], screenName: "unknown",
+                              deviceName: UIDevice.current.name, log: log)
         }
 
-        let screenName = topViewControllerName(window)
-
+        let screenName = resolveScreenName(window)
         walkView(window, depth: 0, parentExternal: false)
 
         let beforeGhost = elements.count
         let filtered = filterGhostTouchTargets(elements)
         let removed = beforeGhost - filtered.count
         if removed > 0 {
-            walkLog += "POST-FILTER: ghost touch removed \(removed) elements (\(beforeGhost) → \(filtered.count))\n"
+            log += "POST-FILTER: ghost touch removed \(removed) elements (\(beforeGhost) → \(filtered.count))\n"
         }
 
-        return (filtered, screenName, UIDevice.current.name)
+        return WalkResult(elements: filtered, screenName: screenName,
+                          deviceName: UIDevice.current.name, log: log)
     }
 
     // MARK: - Recursive Walk
@@ -60,21 +53,18 @@ final class SemanticViewWalker {
         let screenBounds = UIScreen.main.bounds
 
         if view.isHidden && view.subviews.isEmpty {
-            walkLog += "\(indent)SKIP \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height))) hidden=true leaf\n"
+            log += "\(indent)SKIP \(cls) hidden leaf\n"
             return
         }
         if view.alpha == 0 && view.subviews.isEmpty {
-            walkLog += "\(indent)SKIP \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height))) alpha=0 leaf\n"
+            log += "\(indent)SKIP \(cls) alpha=0 leaf\n"
             return
         }
 
-        guard frame.maxY > 0,
-              frame.minY < screenBounds.height,
-              frame.maxX > 0,
-              frame.minX < screenBounds.width,
-              frame.width > 0,
-              frame.height > 0 else {
-            walkLog += "\(indent)SKIP \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height))) offscreen\n"
+        guard frame.maxY > 0, frame.minY < screenBounds.height,
+              frame.maxX > 0, frame.minX < screenBounds.width,
+              frame.width > 0, frame.height > 0 else {
+            log += "\(indent)SKIP \(cls) offscreen\n"
             return
         }
 
@@ -97,14 +87,10 @@ final class SemanticViewWalker {
             view is UIControl ||
             view.accessibilityTraits.contains(.button) ||
             view.accessibilityTraits.contains(.link) ||
-            (view.gestureRecognizers?.contains(where: { $0 is UITapGestureRecognizer }) == true)
+            (view.gestureRecognizers?.contains(where: { $0 is UITapGestureRecognizer || $0 is UILongPressGestureRecognizer }) == true)
         )
 
-        let axLabel = view.accessibilityLabel
-        let axId = view.accessibilityIdentifier
-        let isAccessible = view.isAccessibilityElement
-
-        let element = SemanticUIElement(
+        let element = SemanticElement(
             id: id,
             platformId: platformId,
             semanticType: semanticType,
@@ -114,20 +100,17 @@ final class SemanticViewWalker {
             clickable: clickable,
             enabled: view.isUserInteractionEnabled,
             render: (isExternal || parentExternal) ? "external" : nil,
-            accessible: isAccessible,
-            a11yLabel: axLabel,
-            a11yId: axId
+            accessible: view.isAccessibilityElement,
+            a11yLabel: view.accessibilityLabel,
+            a11yId: view.accessibilityIdentifier
         )
         elements.append(element)
 
         var logLine = "\(indent)EMIT z=\(globalZ) \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height)))"
-        logLine += " hidden=\(view.isHidden) alpha=\(view.alpha) axEl=\(isAccessible)"
-        if let al = axLabel, !al.isEmpty { logLine += " axLabel=\"\(al)\"" }
-        if let ai = axId, !ai.isEmpty { logLine += " axId=\"\(ai)\"" }
-        if let c = content, !c.isEmpty { logLine += " content=\"\(c.prefix(40))\"" }
         logLine += " type=\(semanticType) id=\(id)"
-        if isExternal { logLine += " EXTERNAL(skip children)" }
-        walkLog += logLine + "\n"
+        if let c = content, !c.isEmpty { logLine += " content=\"\(c.prefix(40))\"" }
+        if isExternal { logLine += " EXTERNAL" }
+        log += logLine + "\n"
 
         globalZ += 1
 
@@ -140,11 +123,9 @@ final class SemanticViewWalker {
         synthesizeAccessibilityChildren(view, depth: depth)
     }
 
-    // MARK: - Accessibility Element Synthesis
+    // MARK: - Accessibility Synthesis
 
     private func synthesizeAccessibilityChildren(_ view: UIView, depth: Int) {
-        let indent = String(repeating: "  ", count: depth + 1)
-
         guard let axElements = view.accessibilityElements, !axElements.isEmpty else { return }
 
         let hasOpaqueBitmaps = view.subviews.contains { sub in
@@ -152,6 +133,8 @@ final class SemanticViewWalker {
             return scls.contains("CGDrawingView") || scls.contains("GraphicsView")
         }
         guard hasOpaqueBitmaps else { return }
+
+        let indent = String(repeating: "  ", count: depth + 1)
 
         for axEl in axElements {
             guard let axEl = axEl as? NSObject else { continue }
@@ -169,7 +152,6 @@ final class SemanticViewWalker {
 
             guard axFrame.width > 0, axFrame.height > 0 else { continue }
 
-            let synId = slugify(label)
             let traits = axEl.accessibilityTraits
             let synType: String
             if traits.contains(.button) { synType = "button" }
@@ -177,8 +159,8 @@ final class SemanticViewWalker {
             else if traits.contains(.staticText) { synType = "text" }
             else { synType = "text" }
 
-            let synElement = SemanticUIElement(
-                id: synId,
+            let synElement = SemanticElement(
+                id: slugify(label),
                 platformId: "",
                 semanticType: synType,
                 content: label,
@@ -192,7 +174,7 @@ final class SemanticViewWalker {
                 a11yId: (axEl as? UIAccessibilityIdentification)?.accessibilityIdentifier
             )
             elements.append(synElement)
-            walkLog += "\(indent)SYNTH z=\(globalZ) axElement label=\"\(label)\" (\(Int(axFrame.minX)),\(Int(axFrame.minY)),\(Int(axFrame.width)),\(Int(axFrame.height))) type=\(synType)\n"
+            log += "\(indent)SYNTH z=\(globalZ) label=\"\(label)\" (\(Int(axFrame.minX)),\(Int(axFrame.minY)),\(Int(axFrame.width)),\(Int(axFrame.height))) type=\(synType)\n"
             globalZ += 1
         }
     }
@@ -200,30 +182,16 @@ final class SemanticViewWalker {
     // MARK: - Content Extraction
 
     private func extractContent(_ view: UIView) -> String? {
-        if let label = view as? UILabel, let text = label.text, !text.isEmpty {
-            return text
-        }
-        if let textField = view as? UITextField, let text = textField.text, !text.isEmpty {
-            return text
-        }
-        if let textView = view as? UITextView, let text = textView.text, !text.isEmpty {
-            return text
-        }
-        if let btn = view as? UIButton, let title = btn.currentTitle, !title.isEmpty {
-            return title
-        }
+        if let label = view as? UILabel, let text = label.text, !text.isEmpty { return text }
+        if let tf = view as? UITextField, let text = tf.text, !text.isEmpty { return text }
+        if let tv = view as? UITextView, let text = tv.text, !text.isEmpty { return text }
+        if let btn = view as? UIButton, let title = btn.currentTitle, !title.isEmpty { return title }
         if let seg = view as? UISegmentedControl {
             let idx = seg.selectedSegmentIndex
-            if idx >= 0, let title = seg.titleForSegment(at: idx) {
-                return title
-            }
+            if idx >= 0, let title = seg.titleForSegment(at: idx) { return title }
         }
-        if let sw = view as? UISwitch {
-            return sw.isOn ? "on" : "off"
-        }
-        if let axLabel = view.accessibilityLabel, !axLabel.isEmpty {
-            return axLabel
-        }
+        if let sw = view as? UISwitch { return sw.isOn ? "on" : "off" }
+        if let axLabel = view.accessibilityLabel, !axLabel.isEmpty { return axLabel }
         return nil
     }
 
@@ -234,33 +202,25 @@ final class SemanticViewWalker {
         if view is UIButton || view.accessibilityTraits.contains(.button) { return "button" }
         if view is UIImageView { return "image" }
         if view is UITextField || view is UITextView { return "input" }
-        if view is UISwitch || view is UISlider { return "toggle" }
-        if view is UISegmentedControl { return "toggle" }
+        if view is UISwitch || view is UISlider || view is UISegmentedControl { return "toggle" }
 
         let cls = String(describing: type(of: view))
         if cls.contains("Image") || cls.contains("Drawing") || cls.contains("Graphics") {
             if view.layer.contents != nil { return "image" }
         }
 
-        if view is MKMapView || view is WKWebView { return "container" }
-
         return "container"
     }
 
     // MARK: - Ghost Touch Target Filter
 
-    private func filterGhostTouchTargets(_ elements: [SemanticUIElement]) -> [SemanticUIElement] {
-        var result = elements
+    private func filterGhostTouchTargets(_ elements: [SemanticElement]) -> [SemanticElement] {
         var toRemove = Set<Int>()
 
         for (i, a) in elements.enumerated() {
             guard a.clickable,
                   a.content == nil || a.content?.isEmpty == true,
-                  a.semanticType == "container" else { continue }
-
-            let hasNoBg = !viewHasBackground(at: i)
-
-            guard hasNoBg else { continue }
+                  a.semanticType != "image" else { continue }
 
             for (j, b) in elements.enumerated() where j != i {
                 if boundsMatch(a.bounds, b.bounds) && b.content != nil && !b.content!.isEmpty {
@@ -270,14 +230,7 @@ final class SemanticViewWalker {
             }
         }
 
-        for i in toRemove.sorted(by: >) {
-            result.remove(at: i)
-        }
-        return result
-    }
-
-    private func viewHasBackground(at index: Int) -> Bool {
-        false
+        return elements.enumerated().compactMap { toRemove.contains($0.offset) ? nil : $0.element }
     }
 
     private func boundsMatch(_ a: CGRect, _ b: CGRect) -> Bool {
@@ -308,13 +261,11 @@ final class SemanticViewWalker {
         let name = cls
             .replacingOccurrences(of: "UIKit.", with: "")
             .replacingOccurrences(of: "_UI", with: "")
-            .replacingOccurrences(of: "XCUIElementType", with: "")
         let lower = name.lowercased()
-        if lower.count > 20 { return String(lower.prefix(20)) }
-        return lower
+        return lower.count > 20 ? String(lower.prefix(20)) : lower
     }
 
-    private func topViewControllerName(_ window: UIWindow) -> String {
+    private func resolveScreenName(_ window: UIWindow) -> String {
         var vc = window.rootViewController
         while let presented = vc?.presentedViewController { vc = presented }
         if let nav = vc as? UINavigationController { vc = nav.visibleViewController }
