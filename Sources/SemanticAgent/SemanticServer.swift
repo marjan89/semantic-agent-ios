@@ -1,3 +1,96 @@
+#if DEBUG
+import UIKit
+import Network
+import SwiftUI
+import Resolver
+
+// MARK: - Public API
+
+protocol AgentAuthProvider {
+    var isAuthenticated: Bool { get }
+    var userId: String { get }
+    func login(email: String, password: String) async -> (success: Bool, error: String?)
+    func logout()
+    func resetState()
+}
+
+protocol AgentNavigationProvider {
+    func loadSite(id: String) async -> Site?
+    func loadUser(id: String) async -> RegularUser?
+    func createSiteViewController(site: Site) -> UIViewController
+    func createUserViewController(user: RegularUser) -> UIViewController
+}
+
+@MainActor
+final class SemanticAgent {
+    static let shared = SemanticAgent()
+    private var server: SemanticServer?
+
+    func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
+        guard server == nil else { return }
+        IdleResourceRegistry.shared.installHooks()
+        let auth = NKAgentAuthProvider()
+        let nav = NKAgentNavigationProvider()
+        server = SemanticServer(port: port, auth: auth, nav: nav)
+        server?.start()
+    }
+
+    func stop() {
+        server?.stop()
+        server = nil
+    }
+}
+
+// MARK: - Concrete Providers
+
+@MainActor
+private final class NKAgentAuthProvider: AgentAuthProvider {
+    nonisolated var isAuthenticated: Bool {
+        MainActor.assumeIsolated { AuthService().isAuthenticated }
+    }
+    nonisolated var userId: String {
+        MainActor.assumeIsolated { AuthService().userModel?.user.id ?? "-1" }
+    }
+    func login(email: String, password: String) async -> (success: Bool, error: String?) {
+        let svc = AuthService()
+        await svc.login(authMethod: .password(email: email, password: password))
+        return (svc.isAuthenticated, svc.loginError)
+    }
+    nonisolated func logout() {
+        MainActor.assumeIsolated { AuthService().logout() }
+    }
+    nonisolated func resetState() {
+        MainActor.assumeIsolated {
+            AuthService().logout()
+            let defaults = UserDefaults.standard
+            for key in defaults.dictionaryRepresentation().keys { defaults.removeObject(forKey: key) }
+        }
+    }
+}
+
+@MainActor
+private final class NKAgentNavigationProvider: AgentNavigationProvider {
+    func loadSite(id: String) async -> Site? {
+        let repo: SitesRepository = Resolver.resolve()
+        return await repo.loadSite(siteId: id, relationships: [.images])
+    }
+    func loadUser(id: String) async -> RegularUser? {
+        let api: API = Resolver.resolve()
+        guard let apiUser = try? await api.JSONAPIRequest(with: Endpoints.Public.user(id: id)).valueOrThrow() else { return nil }
+        return RegularUser(user: apiUser)
+    }
+    nonisolated func createSiteViewController(site: Site) -> UIViewController {
+        MainActor.assumeIsolated {
+            UIHostingController(rootView: SiteDetailScreen(site: site).environmentObject(AuthService()))
+        }
+    }
+    nonisolated func createUserViewController(user: RegularUser) -> UIViewController {
+        MainActor.assumeIsolated {
+            UIHostingController(rootView: UserScreen(userViewModel: UserModel(user: user)).environmentObject(AuthService()))
+        }
+    }
+}
+
 // MARK: - HTTP Server
 
 private final class SemanticServer {
@@ -45,14 +138,22 @@ private final class SemanticServer {
             guard let data = data, error == nil else { conn.cancel(); return }
             let req = String(data: data, encoding: .utf8) ?? ""
 
+            let reqStart = Date()
             if req.hasPrefix("GET /semantic") {
+                self.agentLog("GET", "/semantic", durationMs: 0)
                 self.handleSemantic(conn, req: req)
             } else if req.hasPrefix("GET /overlay") {
                 self.handleOverlay(conn, req: req)
             } else if req.hasPrefix("DELETE /overlay") {
                 self.handleOverlayClear(conn)
+            } else if req.hasPrefix("GET /idle-resources") {
+                let status = IdleResourceRegistry.shared.status()
+                let entries = status.map { "\"\(self.escJSON($0.key))\":\($0.value ? "\"idle\"" : "\"busy\"")" }.joined(separator: ",")
+                self.agentLog("GET", "/idle-resources", durationMs: Int(Date().timeIntervalSince(reqStart) * 1000))
+                self.send(conn, status: "200 OK", type: "application/json", body: "{\(entries)}")
             } else if req.hasPrefix("GET /idle") {
                 self.handleIdle(conn)
+                self.agentLog("GET", "/idle", durationMs: Int(Date().timeIntervalSince(reqStart) * 1000))
             } else if req.hasPrefix("POST /animations") {
                 self.handleAnimations(conn, req: req)
             } else if req.hasPrefix("GET /debug-log") {
@@ -69,7 +170,7 @@ private final class SemanticServer {
                           body: "{\"status\":\"ok\",\"agent\":\"semantic-agent\",\"version\":\"5.0.0\"}")
             } else if req.hasPrefix("GET /version") {
                 let hash = "95c522f"
-                let buildTime = "2026-05-28T17:13:28Z"
+                let buildTime = "2026-05-29T19:16:47Z"
                 self.send(conn, status: "200 OK", type: "application/json",
                           body: "{\"git_hash\":\"\(hash)\",\"build_time\":\"\(buildTime)\"}")
             } else if req.hasPrefix("POST /auth/login") {
@@ -82,9 +183,17 @@ private final class SemanticServer {
                 self.handleStateReset(conn)
             } else if req.hasPrefix("GET /permissions") {
                 self.handlePermissions(conn)
+            } else if req.hasPrefix("POST /query-when-idle") {
+                self.agentLog("POST", "/query-when-idle", durationMs: 0)
+                self.handleQueryWhenIdle(conn, req: req)
+            } else if req.hasPrefix("POST /scroll-search") {
+                self.agentLog("POST", "/scroll-search", durationMs: 0)
+                self.handleScrollSearch(conn, req: req)
             } else if req.hasPrefix("POST /navigate/site/") {
+                self.agentLog("POST", "/navigate/site", durationMs: 0)
                 self.handleNavigateSite(conn, req: req)
             } else if req.hasPrefix("POST /navigate/user/") {
+                self.agentLog("POST", "/navigate/user", durationMs: 0)
                 self.handleNavigateUser(conn, req: req)
             } else {
                 self.send(conn, status: "404 Not Found", type: "text/plain", body: "not found")
@@ -231,13 +340,20 @@ private final class SemanticServer {
     // MARK: - /debug-log
 
     private func handleDebugLog(_ conn: NWConnection) {
-        DispatchQueue.main.async {
-            let result = self.cachedWalk ?? self.freshWalk()
-            self.send(conn, status: "200 OK", type: "text/plain", body: result.log)
-        }
+        let entries = logBuffer.joined(separator: ",")
+        send(conn, status: "200 OK", type: "application/json", body: "[\(entries)]")
     }
 
-    // MARK: - HTTP Response
+    // MARK: - Debug Log Buffer
+
+    private var logBuffer: [String] = []
+    private let logBufferLimit = 100
+
+    private func agentLog(_ method: String, _ path: String, durationMs: Int) {
+        let entry = "{\"ts\":\"\(ISO8601DateFormatter().string(from: Date()))\",\"method\":\"\(method)\",\"path\":\"\(path)\",\"duration_ms\":\(durationMs)}"
+        if logBuffer.count >= logBufferLimit { logBuffer.removeFirst() }
+        logBuffer.append(entry)
+    }
 
     // MARK: - /auth/login
 
@@ -382,6 +498,155 @@ private final class SemanticServer {
                           body: "{\"navigated\":\"user\",\"id\":\(userId)}")
             }
         }
+    }
+
+    // MARK: - /query-when-idle
+
+    private func handleQueryWhenIdle(_ conn: NWConnection, req: String) {
+        let body = extractBody(req)
+        let timeout = extractJSONDouble(body, key: "timeout") ?? 5.0
+        let matchFuzzy = extractJSONString(body, key: "content_fuzzy")
+        let matchText = extractJSONString(body, key: "text")
+        let matchId = extractJSONString(body, key: "id")
+
+        var resourceNames: [String] = []
+        if let raw = extractJSONArray(body, key: "idle_resources") {
+            resourceNames = raw
+        }
+
+        let registry = IdleResourceRegistry.shared
+        let startTime = Date()
+
+        registry.waitForIdle(named: resourceNames, timeout: timeout) {  [weak self] idle in
+            guard let self = self else { return }
+            let waitMs = Int(Date().timeIntervalSince(startTime) * 1000)
+
+            if !idle {
+                let status = registry.status(named: resourceNames)
+                let statusJSON = status.map { "\"\(self.escJSON($0.key))\":\($0.value)" }.joined(separator: ",")
+                self.send(conn, status: "200 OK", type: "application/json",
+                          body: "{\"found\":false,\"timeout\":true,\"idle_wait_ms\":\(waitMs),\"idle_resources_status\":{\(statusJSON)}}")
+                return
+            }
+
+            DispatchQueue.main.async {
+                let result = self.freshWalk()
+                let elements = result.elements
+
+                var found: SemanticElement?
+                for el in elements {
+                    if let mid = matchId, el.a11yId == mid {
+                        found = el; break
+                    }
+                    if let mt = matchText, el.content == mt {
+                        found = el; break
+                    }
+                    if let mf = matchFuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) {
+                        found = el; break
+                    }
+                }
+
+                if let el = found {
+                    let cx = el.bounds.midX
+                    let cy = el.bounds.midY
+                    let contentStr = self.escJSON(el.content ?? "")
+                    self.send(conn, status: "200 OK", type: "application/json",
+                              body: "{\"found\":true,\"element\":{\"x\":\(Int(cx)),\"y\":\(Int(cy)),\"w\":\(Int(el.bounds.width)),\"h\":\(Int(el.bounds.height)),\"content\":\"\(contentStr)\",\"type\":\"\(el.semanticType)\"},\"idle_wait_ms\":\(waitMs),\"source\":\"view_tree\"}")
+                } else {
+                    let status = registry.status(named: resourceNames)
+                    let statusJSON = status.map { "\"\(self.escJSON($0.key))\":\($0.value)" }.joined(separator: ",")
+                    self.send(conn, status: "200 OK", type: "application/json",
+                              body: "{\"found\":false,\"timeout\":false,\"idle_wait_ms\":\(waitMs),\"idle_resources_status\":{\(statusJSON)}}")
+                }
+            }
+        }
+    }
+
+    // MARK: - /scroll-search
+
+    private func handleScrollSearch(_ conn: NWConnection, req: String) {
+        let body = extractBody(req)
+        let matchFuzzy = extractJSONString(body, key: "content_fuzzy")
+        let matchText = extractJSONString(body, key: "text")
+        let matchId = extractJSONString(body, key: "id")
+        let maxScroll = Int(extractJSONDouble(body, key: "max_scroll") ?? 15)
+        let restoreScroll = extractJSONBool(body, key: "restore_scroll") ?? false
+
+        var resourceNames: [String] = []
+        if let raw = extractJSONArray(body, key: "idle_resources") {
+            resourceNames = raw
+        }
+
+        let registry = IdleResourceRegistry.shared
+        let startTime = Date()
+
+        registry.waitForIdle(named: resourceNames, timeout: 3) { [weak self] _ in
+            guard let self = self else { return }
+
+            DispatchQueue.main.async {
+                let result = self.freshWalk()
+                var found: SemanticElement?
+                for el in result.elements {
+                    if let mid = matchId, el.a11yId == mid { found = el; break }
+                    if let mt = matchText, el.content == mt { found = el; break }
+                    if let mf = matchFuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) { found = el; break }
+                }
+
+                if let el = found {
+                    let waitMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    let contentStr = self.escJSON(el.content ?? "")
+                    self.send(conn, status: "200 OK", type: "application/json",
+                              body: "{\"found\":true,\"element\":{\"x\":\(Int(el.bounds.midX)),\"y\":\(Int(el.bounds.midY)),\"w\":\(Int(el.bounds.width)),\"h\":\(Int(el.bounds.height)),\"content\":\"\(contentStr)\",\"type\":\"\(el.semanticType)\"},\"scrolls\":0,\"scroll_restored\":true,\"idle_wait_ms\":\(waitMs)}")
+                    return
+                }
+
+                let walker = SemanticWalker()
+                walker.walkWithScroll(steps: maxScroll) { scrollResult in
+                    var scrollFound: SemanticElement?
+                    for el in scrollResult.elements {
+                        if let mid = matchId, el.a11yId == mid { scrollFound = el; break }
+                        if let mt = matchText, el.content == mt { scrollFound = el; break }
+                        if let mf = matchFuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) { scrollFound = el; break }
+                    }
+                    let waitMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    if let el = scrollFound {
+                        let contentStr = self.escJSON(el.content ?? "")
+                        self.send(conn, status: "200 OK", type: "application/json",
+                                  body: "{\"found\":true,\"element\":{\"x\":\(Int(el.bounds.midX)),\"y\":\(Int(el.bounds.midY)),\"w\":\(Int(el.bounds.width)),\"h\":\(Int(el.bounds.height)),\"content\":\"\(contentStr)\",\"type\":\"\(el.semanticType)\"},\"scrolls\":\(maxScroll),\"scroll_restored\":\(restoreScroll),\"idle_wait_ms\":\(waitMs)}")
+                    } else {
+                        self.send(conn, status: "200 OK", type: "application/json",
+                                  body: "{\"found\":false,\"scrolls\":\(maxScroll),\"timeout\":false,\"idle_wait_ms\":\(waitMs)}")
+                    }
+                }
+            }
+        }
+    }
+
+    private func extractJSONBool(_ json: String, key: String) -> Bool? {
+        let pattern = "\"\(key)\"\\s*:\\s*(true|false)"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: json, range: NSRange(json.startIndex..., in: json)),
+              let range = Range(match.range(at: 1), in: json) else { return nil }
+        return json[range] == "true"
+    }
+
+    private func extractJSONDouble(_ json: String, key: String) -> Double? {
+        let pattern = "\"\(key)\"\\s*:\\s*([0-9.]+)"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: json, range: NSRange(json.startIndex..., in: json)),
+              let range = Range(match.range(at: 1), in: json) else { return nil }
+        return Double(json[range])
+    }
+
+    private func extractJSONArray(_ json: String, key: String) -> [String]? {
+        let pattern = "\"\(key)\"\\s*:\\s*\\[([^\\]]*)\\]"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: json, range: NSRange(json.startIndex..., in: json)),
+              let range = Range(match.range(at: 1), in: json) else { return nil }
+        let inner = String(json[range])
+        return inner.components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
+            .filter { !$0.isEmpty }
     }
 
     // MARK: - Helpers

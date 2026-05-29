@@ -1,62 +1,66 @@
 #if DEBUG
 import UIKit
 
-enum IdleDetector {
+// MARK: - Idle Resource Protocol
 
-    static func isIdle() -> Bool {
-        guard let window = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow) else { return true }
+protocol IdleResource {
+    var name: String { get }
+    func isIdle() -> Bool
+}
 
-        // Check navigation transitions
-        if hasActiveNavTransition(window) { return false }
+// MARK: - Built-in Resources
 
-        // Check CALayer animations
-        if hasActiveAnimations(window) { return false }
-
-        // Check activity indicators (loading spinners)
-        if hasActiveSpinners(window) { return false }
-
-        // Check modal presentations in progress
-        if hasActivePresentation(window) { return false }
-
-        return true
+struct RunLoopIdleResource: IdleResource {
+    let name = "runloop"
+    func isIdle() -> Bool {
+        let mode = RunLoop.main.currentMode
+        return mode == nil || mode == .default
     }
+}
 
-    private static func hasActiveNavTransition(_ window: UIWindow) -> Bool {
+struct NavigationIdleResource: IdleResource {
+    let name = "navigation"
+    func isIdle() -> Bool {
+        guard let window = keyWindow() else { return true }
         var vc: UIViewController? = window.rootViewController
         while let current = vc {
-            if let nav = current as? UINavigationController {
-                if nav.transitionCoordinator != nil { return true }
-            }
-            if current.transitionCoordinator != nil { return true }
+            if let nav = current as? UINavigationController,
+               nav.transitionCoordinator != nil { return false }
+            if current.transitionCoordinator != nil { return false }
+            if current.isBeingPresented || current.isBeingDismissed { return false }
             vc = current.presentedViewController
         }
-        return false
+        return true
+    }
+}
+
+struct AnimationIdleResource: IdleResource {
+    let name = "animation"
+    func isIdle() -> Bool {
+        guard let window = keyWindow() else { return true }
+        return !viewHasAnimations(window)
     }
 
-    private static func hasActiveAnimations(_ window: UIWindow) -> Bool {
-        return viewHasAnimations(window)
-    }
-
-    private static func viewHasAnimations(_ view: UIView) -> Bool {
+    private func viewHasAnimations(_ view: UIView) -> Bool {
         if let keys = view.layer.animationKeys(), !keys.isEmpty { return true }
         for sub in view.subviews {
             if viewHasAnimations(sub) { return true }
         }
         return false
     }
+}
 
-    private static func hasActiveSpinners(_ window: UIWindow) -> Bool {
-        return findSpinner(window)
+struct SpinnerIdleResource: IdleResource {
+    let name = "spinner"
+    func isIdle() -> Bool {
+        guard let window = keyWindow() else { return true }
+        return !findSpinner(window)
     }
 
-    private static func findSpinner(_ view: UIView) -> Bool {
+    private func findSpinner(_ view: UIView) -> Bool {
         if let spinner = view as? UIActivityIndicatorView {
             if spinner.isAnimating && !spinner.isHidden && spinner.alpha > 0.01 { return true }
         }
-        // SwiftUI ProgressView renders as _UIActivityIndicatorView
         let typeName = String(describing: type(of: view))
         if typeName.contains("ActivityIndicator") && !view.isHidden && view.alpha > 0.01 {
             return true
@@ -66,14 +70,127 @@ enum IdleDetector {
         }
         return false
     }
+}
 
-    private static func hasActivePresentation(_ window: UIWindow) -> Bool {
-        var vc: UIViewController? = window.rootViewController
-        while let current = vc {
-            if current.isBeingPresented || current.isBeingDismissed { return true }
-            vc = current.presentedViewController
+final class NetworkIdleResource: IdleResource {
+    let name = "network"
+    static let shared = NetworkIdleResource()
+    private var lastActivityTime: Date = Date()
+    private let lock = NSLock()
+    private let settleInterval: TimeInterval = 1.5
+
+    func isIdle() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return Date().timeIntervalSince(lastActivityTime) > settleInterval
+    }
+
+    func noteActivity() {
+        lock.lock()
+        lastActivityTime = Date()
+        lock.unlock()
+    }
+
+    func installHook() {
+        URLProtocol.registerClass(NetworkIdleURLProtocol.self)
+    }
+}
+
+final class NetworkIdleURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool {
+        NetworkIdleResource.shared.noteActivity()
+        return false
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {}
+    override func stopLoading() {}
+}
+
+struct LayoutIdleResource: IdleResource {
+    let name = "layout"
+    func isIdle() -> Bool {
+        guard let window = keyWindow() else { return true }
+        return !viewNeedsLayout(window)
+    }
+
+    private func viewNeedsLayout(_ view: UIView) -> Bool {
+        if view.layer.needsLayout() { return true }
+        for sub in view.subviews.prefix(50) {
+            if viewNeedsLayout(sub) { return true }
         }
         return false
     }
+}
+
+// MARK: - Registry
+
+final class IdleResourceRegistry {
+    static let shared = IdleResourceRegistry()
+
+    private(set) var resources: [IdleResource] = [
+        NavigationIdleResource(),
+        AnimationIdleResource(),
+        SpinnerIdleResource(),
+        LayoutIdleResource(),
+        NetworkIdleResource.shared,
+    ]
+
+    func installHooks() {
+        NetworkIdleResource.shared.installHook()
+    }
+
+    func isAllIdle() -> Bool {
+        resources.allSatisfy { $0.isIdle() }
+    }
+
+    func isAllIdle(named: [String]) -> Bool {
+        let filtered = named.isEmpty ? resources : resources.filter { named.contains($0.name) }
+        return filtered.allSatisfy { $0.isIdle() }
+    }
+
+    func status() -> [String: Bool] {
+        var result: [String: Bool] = [:]
+        for r in resources { result[r.name] = r.isIdle() }
+        return result
+    }
+
+    func status(named: [String]) -> [String: Bool] {
+        let filtered = named.isEmpty ? resources : resources.filter { named.contains($0.name) }
+        var result: [String: Bool] = [:]
+        for r in filtered { result[r.name] = r.isIdle() }
+        return result
+    }
+
+    func waitForIdle(named: [String] = [], timeout: TimeInterval = 5, callback: @escaping (Bool) -> Void) {
+        let deadline = Date().addingTimeInterval(timeout)
+        func check() {
+            if isAllIdle(named: named) {
+                callback(true)
+            } else if Date() >= deadline {
+                callback(false)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { check() }
+            }
+        }
+        DispatchQueue.main.async { check() }
+    }
+}
+
+// MARK: - Legacy API (backward-compatible)
+
+enum IdleDetector {
+    static func isIdle() -> Bool {
+        IdleResourceRegistry.shared.isAllIdle()
+    }
+}
+
+// MARK: - Helpers
+
+private func keyWindow() -> UIWindow? {
+    UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+        .first(where: \.isKeyWindow)
 }
 #endif
