@@ -112,7 +112,7 @@ final class PresentationIdleResource: IdleResource {
     static let shared = PresentationIdleResource()
     private var lastPresentationChange: Date = .distantPast
     private let lock = NSLock()
-    private let settleInterval: TimeInterval = 0.5
+    private let settleInterval: TimeInterval = 0.3
 
     func isIdle() -> Bool {
         let windowCount = activeWindowCount()
