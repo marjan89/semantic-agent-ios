@@ -107,6 +107,54 @@ final class NetworkIdleURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+final class PresentationIdleResource: IdleResource {
+    let name = "presentation"
+    static let shared = PresentationIdleResource()
+    private var lastPresentationChange: Date = .distantPast
+    private let lock = NSLock()
+    private let settleInterval: TimeInterval = 0.5
+
+    func isIdle() -> Bool {
+        let windowCount = activeWindowCount()
+        let hasPresentation = hasPendingPresentation()
+
+        if windowCount > 1 || hasPresentation {
+            noteChange()
+            return true
+        }
+
+        lock.lock()
+        let settled = Date().timeIntervalSince(lastPresentationChange) > settleInterval
+        lock.unlock()
+        return settled
+    }
+
+    func noteChange() {
+        lock.lock()
+        lastPresentationChange = Date()
+        lock.unlock()
+    }
+
+    private func activeWindowCount() -> Int {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .filter { !$0.isHidden && $0.alpha > 0 }
+            .count
+    }
+
+    private func hasPendingPresentation() -> Bool {
+        guard let window = keyWindow(),
+              var vc = window.rootViewController else { return false }
+        while let presented = vc.presentedViewController {
+            if presented.isBeingPresented || presented.isBeingDismissed { return true }
+            if presented is UIAlertController { return false }
+            vc = presented
+        }
+        return false
+    }
+}
+
 struct LayoutIdleResource: IdleResource {
     let name = "layout"
     func isIdle() -> Bool {
@@ -134,6 +182,7 @@ final class IdleResourceRegistry {
         SpinnerIdleResource(),
         LayoutIdleResource(),
         NetworkIdleResource.shared,
+        PresentationIdleResource.shared,
     ]
 
     func installHooks() {
