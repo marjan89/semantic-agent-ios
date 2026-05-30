@@ -2,24 +2,7 @@
 import UIKit
 import Network
 import SwiftUI
-import Resolver
-
 // MARK: - Public API
-
-protocol AgentAuthProvider {
-    var isAuthenticated: Bool { get }
-    var userId: String { get }
-    func login(email: String, password: String) async -> (success: Bool, error: String?)
-    func logout()
-    func resetState()
-}
-
-protocol AgentNavigationProvider {
-    func loadSite(id: String) async -> Site?
-    func loadUser(id: String) async -> RegularUser?
-    func createSiteViewController(site: Site) -> UIViewController
-    func createUserViewController(user: RegularUser) -> UIViewController
-}
 
 @MainActor
 final class SemanticAgent {
@@ -29,9 +12,7 @@ final class SemanticAgent {
     func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
         guard server == nil else { return }
         IdleResourceRegistry.shared.installHooks()
-        let auth = NKAgentAuthProvider()
-        let nav = NKAgentNavigationProvider()
-        server = SemanticServer(port: port, auth: auth, nav: nav)
+        server = SemanticServer(port: port)
         server?.start()
     }
 
@@ -41,71 +22,17 @@ final class SemanticAgent {
     }
 }
 
-// MARK: - Concrete Providers
-
-@MainActor
-private final class NKAgentAuthProvider: AgentAuthProvider {
-    nonisolated var isAuthenticated: Bool {
-        MainActor.assumeIsolated { AuthService().isAuthenticated }
-    }
-    nonisolated var userId: String {
-        MainActor.assumeIsolated { AuthService().userModel?.user.id ?? "-1" }
-    }
-    func login(email: String, password: String) async -> (success: Bool, error: String?) {
-        let svc = AuthService()
-        await svc.login(authMethod: .password(email: email, password: password))
-        return (svc.isAuthenticated, svc.loginError)
-    }
-    nonisolated func logout() {
-        MainActor.assumeIsolated { AuthService().logout() }
-    }
-    nonisolated func resetState() {
-        MainActor.assumeIsolated {
-            AuthService().logout()
-            let defaults = UserDefaults.standard
-            for key in defaults.dictionaryRepresentation().keys { defaults.removeObject(forKey: key) }
-        }
-    }
-}
-
-@MainActor
-private final class NKAgentNavigationProvider: AgentNavigationProvider {
-    func loadSite(id: String) async -> Site? {
-        let repo: SitesRepository = Resolver.resolve()
-        return await repo.loadSite(siteId: id, relationships: [.images])
-    }
-    func loadUser(id: String) async -> RegularUser? {
-        let api: API = Resolver.resolve()
-        guard let apiUser = try? await api.JSONAPIRequest(with: Endpoints.Public.user(id: id)).valueOrThrow() else { return nil }
-        return RegularUser(user: apiUser)
-    }
-    nonisolated func createSiteViewController(site: Site) -> UIViewController {
-        MainActor.assumeIsolated {
-            UIHostingController(rootView: SiteDetailScreen(site: site).environmentObject(AuthService()))
-        }
-    }
-    nonisolated func createUserViewController(user: RegularUser) -> UIViewController {
-        MainActor.assumeIsolated {
-            UIHostingController(rootView: UserScreen(userViewModel: UserModel(user: user)).environmentObject(AuthService()))
-        }
-    }
-}
-
 // MARK: - HTTP Server
 
 private final class SemanticServer {
     private var listener: NWListener?
     private let port: UInt16
-    private let auth: AgentAuthProvider
-    private let nav: AgentNavigationProvider
     private var overlayWindow: OverlayWindow?
     private var cachedWalk: WalkResult?
     private var cachedWalkTime: Date?
 
-    init(port: UInt16, auth: AgentAuthProvider, nav: AgentNavigationProvider) {
+    init(port: UInt16) {
         self.port = port
-        self.auth = auth
-        self.nav = nav
     }
 
     func start() {
@@ -170,31 +97,15 @@ private final class SemanticServer {
                           body: "{\"status\":\"ok\",\"agent\":\"semantic-agent\",\"version\":\"5.0.0\"}")
             } else if req.hasPrefix("GET /version") {
                 let hash = "95c522f"
-                let buildTime = "2026-05-29T19:16:47Z"
+                let buildTime = "2026-05-29T20:51:41Z"
                 self.send(conn, status: "200 OK", type: "application/json",
                           body: "{\"git_hash\":\"\(hash)\",\"build_time\":\"\(buildTime)\"}")
-            } else if req.hasPrefix("POST /auth/login") {
-                self.handleAuthLogin(conn, req: req)
-            } else if req.hasPrefix("POST /auth/logout") {
-                self.handleAuthLogout(conn)
-            } else if req.hasPrefix("GET /auth/state") {
-                self.handleAuthState(conn)
-            } else if req.hasPrefix("POST /state/reset") {
-                self.handleStateReset(conn)
-            } else if req.hasPrefix("GET /permissions") {
-                self.handlePermissions(conn)
             } else if req.hasPrefix("POST /query-when-idle") {
                 self.agentLog("POST", "/query-when-idle", durationMs: 0)
                 self.handleQueryWhenIdle(conn, req: req)
             } else if req.hasPrefix("POST /scroll-search") {
                 self.agentLog("POST", "/scroll-search", durationMs: 0)
                 self.handleScrollSearch(conn, req: req)
-            } else if req.hasPrefix("POST /navigate/site/") {
-                self.agentLog("POST", "/navigate/site", durationMs: 0)
-                self.handleNavigateSite(conn, req: req)
-            } else if req.hasPrefix("POST /navigate/user/") {
-                self.agentLog("POST", "/navigate/user", durationMs: 0)
-                self.handleNavigateUser(conn, req: req)
             } else {
                 self.send(conn, status: "404 Not Found", type: "text/plain", body: "not found")
             }
@@ -353,151 +264,6 @@ private final class SemanticServer {
         let entry = "{\"ts\":\"\(ISO8601DateFormatter().string(from: Date()))\",\"method\":\"\(method)\",\"path\":\"\(path)\",\"duration_ms\":\(durationMs)}"
         if logBuffer.count >= logBufferLimit { logBuffer.removeFirst() }
         logBuffer.append(entry)
-    }
-
-    // MARK: - /auth/login
-
-    private func handleAuthLogin(_ conn: NWConnection, req: String) {
-        let body = extractBody(req)
-        guard let email = extractJSONString(body, key: "email"),
-              let password = extractJSONString(body, key: "password") else {
-            send(conn, status: "400 Bad Request", type: "application/json",
-                 body: "{\"error\":\"missing email or password\"}")
-            return
-        }
-        Task { @MainActor in
-            let result = await self.auth.login(email: email, password: password)
-            if result.success {
-                self.send(conn, status: "200 OK", type: "application/json", body: "{\"logged_in\":true}")
-            } else {
-                let err = self.escJSON(result.error ?? "unknown")
-                self.send(conn, status: "401 Unauthorized", type: "application/json",
-                          body: "{\"logged_in\":false,\"error\":\"\(err)\"}")
-            }
-        }
-    }
-
-    // MARK: - /auth/logout
-
-    private func handleAuthLogout(_ conn: NWConnection) {
-        Task { @MainActor in
-            self.auth.logout()
-            self.send(conn, status: "200 OK", type: "application/json", body: "{\"logged_in\":false}")
-        }
-    }
-
-    // MARK: - /auth/state
-
-    private func handleAuthState(_ conn: NWConnection) {
-        Task { @MainActor in
-            let loggedIn = self.auth.isAuthenticated
-            let userId = self.auth.userId
-            self.send(conn, status: "200 OK", type: "application/json",
-                      body: "{\"logged_in\":\(loggedIn),\"user_id\":\"\(userId)\"}")
-        }
-    }
-
-    // MARK: - /state/reset
-
-    private func handleStateReset(_ conn: NWConnection) {
-        Task { @MainActor in
-            self.auth.resetState()
-            self.send(conn, status: "200 OK", type: "application/json", body: "{\"reset\":true}")
-        }
-    }
-
-    // MARK: - /permissions
-
-    private func handlePermissions(_ conn: NWConnection) {
-        let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
-        var perms: [(String, Bool)] = []
-        if let infoPlist = Bundle.main.infoDictionary {
-            let permKeys = infoPlist.keys.filter { $0.hasPrefix("NS") && $0.hasSuffix("UsageDescription") }
-            for key in permKeys {
-                perms.append((key, true))
-            }
-        }
-        let items = perms.map { "{\"permission\":\"\($0.0)\",\"granted\":\($0.1)}" }.joined(separator: ",")
-        send(conn, status: "200 OK", type: "application/json",
-             body: "{\"package\":\"\(bundleId)\",\"permissions\":[\(items)]}")
-    }
-
-    // MARK: - /navigate/site/{id}
-
-    private func handleNavigateSite(_ conn: NWConnection, req: String) {
-        guard let line = req.components(separatedBy: "\r\n").first,
-              let path = line.components(separatedBy: " ").dropFirst().first,
-              let idStr = path.components(separatedBy: "/").last,
-              let siteId = Int(idStr) else {
-            send(conn, status: "400 Bad Request", type: "application/json",
-                 body: "{\"error\":\"invalid site id\"}")
-            return
-        }
-        Task { @MainActor in
-            guard let site = await self.nav.loadSite(id: String(siteId)) else {
-                self.send(conn, status: "404 Not Found", type: "application/json",
-                          body: "{\"error\":\"site \(siteId) not found\"}")
-                return
-            }
-            guard let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene }).first,
-                  let rootVC = scene.windows.first(where: \.isKeyWindow)?.rootViewController else {
-                self.send(conn, status: "500 Internal Server Error", type: "application/json",
-                          body: "{\"error\":\"no root view controller\"}")
-                return
-            }
-            let hostingVC = self.nav.createSiteViewController(site: site)
-            if let navVC = rootVC as? UINavigationController {
-                navVC.pushViewController(hostingVC, animated: false)
-            } else if let navVC = rootVC.children.compactMap({ $0 as? UINavigationController }).first {
-                navVC.pushViewController(hostingVC, animated: false)
-            } else {
-                rootVC.present(hostingVC, animated: false)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                self.send(conn, status: "200 OK", type: "application/json",
-                          body: "{\"navigated\":\"site\",\"id\":\(siteId)}")
-            }
-        }
-    }
-
-    // MARK: - /navigate/user/{id}
-
-    private func handleNavigateUser(_ conn: NWConnection, req: String) {
-        guard let line = req.components(separatedBy: "\r\n").first,
-              let path = line.components(separatedBy: " ").dropFirst().first,
-              let idStr = path.components(separatedBy: "/").last,
-              let userId = Int(idStr) else {
-            send(conn, status: "400 Bad Request", type: "application/json",
-                 body: "{\"error\":\"invalid user id\"}")
-            return
-        }
-        Task { @MainActor in
-            guard let user = await self.nav.loadUser(id: String(userId)) else {
-                self.send(conn, status: "404 Not Found", type: "application/json",
-                          body: "{\"error\":\"user \(userId) not found\"}")
-                return
-            }
-            guard let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene }).first,
-                  let rootVC = scene.windows.first(where: \.isKeyWindow)?.rootViewController else {
-                self.send(conn, status: "500 Internal Server Error", type: "application/json",
-                          body: "{\"error\":\"no root view controller\"}")
-                return
-            }
-            let hostingVC = self.nav.createUserViewController(user: user)
-            if let navVC = rootVC as? UINavigationController {
-                navVC.pushViewController(hostingVC, animated: false)
-            } else if let navVC = rootVC.children.compactMap({ $0 as? UINavigationController }).first {
-                navVC.pushViewController(hostingVC, animated: false)
-            } else {
-                rootVC.present(hostingVC, animated: false)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                self.send(conn, status: "200 OK", type: "application/json",
-                          body: "{\"navigated\":\"user\",\"id\":\(userId)}")
-            }
-        }
     }
 
     // MARK: - /query-when-idle
