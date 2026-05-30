@@ -71,6 +71,23 @@ final class MockRegistry: MockRegistryProtocol {
         defer { lock.unlock() }
         return entries.count
     }
+
+    private(set) var hitCount: Int = 0
+    private(set) var hitLog: [(url: String, method: String, status: Int)] = []
+
+    func recordHit(url: String, method: String, status: Int) {
+        lock.lock()
+        hitCount += 1
+        hitLog.append((url: url, method: method, status: status))
+        lock.unlock()
+    }
+
+    func hitSummary() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        let entries = hitLog.map { "\($0.method) \($0.url) → \($0.status)" }
+        return "hits: \(hitCount)\n" + entries.joined(separator: "\n")
+    }
 }
 
 // MARK: - URLProtocol Adapter
@@ -80,8 +97,8 @@ final class MockURLProtocol: URLProtocol {
         guard let url = request.url else { return false }
         if url.host == "127.0.0.1" || url.host == "localhost" { return false }
         let can = MockRegistry.shared.canHandle(url: url, method: request.httpMethod ?? "GET")
-        if can {
-            print("[MockURLProtocol] intercepting: \(request.httpMethod ?? "GET") \(url.path)")
+        if MockRegistry.shared.count > 0 {
+            print("[MockURLProtocol] canInit: \(request.httpMethod ?? "GET") \(url.absoluteString.prefix(100)) → \(can)")
         }
         return can
     }
@@ -94,6 +111,9 @@ final class MockURLProtocol: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
             return
         }
+
+        MockRegistry.shared.recordHit(url: url.path, method: request.httpMethod ?? "GET", status: mock.status)
+        print("[MockURLProtocol] served: \(request.httpMethod ?? "GET") \(url.path) → \(mock.status)")
 
         var headerFields = mock.headers
         headerFields["X-Mock"] = "true"

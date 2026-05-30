@@ -12,7 +12,7 @@ final class SemanticAgent {
     func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
         guard server == nil else { return }
         IdleResourceRegistry.shared.installHooks()
-        MockURLProtocol.install()
+        // MockURLProtocol.install() moved to AppDelegate.init() for timing
         server = SemanticServer(port: port)
         server?.start()
     }
@@ -98,7 +98,7 @@ private final class SemanticServer {
                           body: "{\"status\":\"ok\",\"agent\":\"semantic-agent\",\"version\":\"5.0.0\"}")
             } else if req.hasPrefix("GET /version") {
                 let hash = "95c522f"
-                let buildTime = "2026-05-30T11:21:20Z"
+                let buildTime = "2026-05-30T13:38:01Z"
                 self.send(conn, status: "200 OK", type: "application/json",
                           body: "{\"git_hash\":\"\(hash)\",\"build_time\":\"\(buildTime)\"}")
             } else if req.hasPrefix("POST /query-when-idle") {
@@ -113,6 +113,9 @@ private final class SemanticServer {
             } else if req.hasPrefix("POST /mock") {
                 self.agentLog("POST", "/mock", durationMs: 0)
                 self.handleMock(conn, req: req)
+            } else if req.hasPrefix("GET /mock-status") {
+                let summary = MockRegistry.shared.hitSummary()
+                self.send(conn, status: "200 OK", type: "text/plain", body: summary)
             } else if req.hasPrefix("POST /unmock") {
                 self.agentLog("POST", "/unmock", durationMs: 0)
                 self.handleUnmock(conn, req: req)
@@ -278,7 +281,7 @@ private final class SemanticServer {
 
     // MARK: - /query-when-idle
 
-    private func elementMatches(_ el: SemanticElement, id: String?, text: String?, fuzzy: String?, type: String?, viewportOnly: Bool = true) -> Bool {
+    private func elementMatches(_ el: SemanticElement, id: String?, text: String?, fuzzy: String?, type: String?, viewportOnly: Bool = false) -> Bool {
         if viewportOnly {
             let screenH = UIScreen.main.bounds.height
             let cy = el.bounds.midY
