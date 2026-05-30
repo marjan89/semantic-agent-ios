@@ -268,12 +268,21 @@ private final class SemanticServer {
 
     // MARK: - /query-when-idle
 
+    private func elementMatches(_ el: SemanticElement, id: String?, text: String?, fuzzy: String?, type: String?) -> Bool {
+        if let t = type, !el.semanticType.lowercased().contains(t.lowercased()) { return false }
+        if let mid = id, el.a11yId == mid { return true }
+        if let mt = text, el.content == mt { return true }
+        if let mf = fuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) { return true }
+        return false
+    }
+
     private func handleQueryWhenIdle(_ conn: NWConnection, req: String) {
         let body = extractBody(req)
         let timeout = extractJSONDouble(body, key: "timeout") ?? 5.0
         let matchFuzzy = extractJSONString(body, key: "content_fuzzy")
         let matchText = extractJSONString(body, key: "text")
         let matchId = extractJSONString(body, key: "id")
+        let matchType = extractJSONString(body, key: "type")
 
         var resourceNames: [String] = []
         if let raw = extractJSONArray(body, key: "idle_resources") {
@@ -301,13 +310,7 @@ private final class SemanticServer {
 
                 var found: SemanticElement?
                 for el in elements {
-                    if let mid = matchId, el.a11yId == mid {
-                        found = el; break
-                    }
-                    if let mt = matchText, el.content == mt {
-                        found = el; break
-                    }
-                    if let mf = matchFuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) {
+                    if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType) {
                         found = el; break
                     }
                 }
@@ -335,6 +338,7 @@ private final class SemanticServer {
         let matchFuzzy = extractJSONString(body, key: "content_fuzzy")
         let matchText = extractJSONString(body, key: "text")
         let matchId = extractJSONString(body, key: "id")
+        let matchType = extractJSONString(body, key: "type")
         let maxScroll = Int(extractJSONDouble(body, key: "max_scroll") ?? 15)
         let restoreScroll = extractJSONBool(body, key: "restore_scroll") ?? false
 
@@ -353,9 +357,7 @@ private final class SemanticServer {
                 let result = self.freshWalk()
                 var found: SemanticElement?
                 for el in result.elements {
-                    if let mid = matchId, el.a11yId == mid { found = el; break }
-                    if let mt = matchText, el.content == mt { found = el; break }
-                    if let mf = matchFuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) { found = el; break }
+                    if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType) { found = el; break }
                 }
 
                 if let el = found {
@@ -370,9 +372,7 @@ private final class SemanticServer {
                 walker.walkWithScroll(steps: maxScroll) { scrollResult in
                     var scrollFound: SemanticElement?
                     for el in scrollResult.elements {
-                        if let mid = matchId, el.a11yId == mid { scrollFound = el; break }
-                        if let mt = matchText, el.content == mt { scrollFound = el; break }
-                        if let mf = matchFuzzy, let c = el.content, c.lowercased().contains(mf.lowercased()) { scrollFound = el; break }
+                        if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType) { scrollFound = el; break }
                     }
                     let waitMs = Int(Date().timeIntervalSince(startTime) * 1000)
                     if let el = scrollFound {
