@@ -12,6 +12,7 @@ final class SemanticAgent {
     func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
         guard server == nil else { return }
         IdleResourceRegistry.shared.installHooks()
+        MockURLProtocol.install()
         server = SemanticServer(port: port)
         server?.start()
     }
@@ -97,7 +98,7 @@ private final class SemanticServer {
                           body: "{\"status\":\"ok\",\"agent\":\"semantic-agent\",\"version\":\"5.0.0\"}")
             } else if req.hasPrefix("GET /version") {
                 let hash = "95c522f"
-                let buildTime = "2026-05-29T20:51:41Z"
+                let buildTime = "2026-05-30T11:21:20Z"
                 self.send(conn, status: "200 OK", type: "application/json",
                           body: "{\"git_hash\":\"\(hash)\",\"build_time\":\"\(buildTime)\"}")
             } else if req.hasPrefix("POST /query-when-idle") {
@@ -106,6 +107,15 @@ private final class SemanticServer {
             } else if req.hasPrefix("POST /scroll-search") {
                 self.agentLog("POST", "/scroll-search", durationMs: 0)
                 self.handleScrollSearch(conn, req: req)
+            } else if req.hasPrefix("POST /pop-to-root") {
+                self.agentLog("POST", "/pop-to-root", durationMs: 0)
+                self.handlePopToRoot(conn)
+            } else if req.hasPrefix("POST /mock") {
+                self.agentLog("POST", "/mock", durationMs: 0)
+                self.handleMock(conn, req: req)
+            } else if req.hasPrefix("POST /unmock") {
+                self.agentLog("POST", "/unmock", durationMs: 0)
+                self.handleUnmock(conn, req: req)
             } else {
                 self.send(conn, status: "404 Not Found", type: "text/plain", body: "not found")
             }
@@ -268,7 +278,12 @@ private final class SemanticServer {
 
     // MARK: - /query-when-idle
 
-    private func elementMatches(_ el: SemanticElement, id: String?, text: String?, fuzzy: String?, type: String?) -> Bool {
+    private func elementMatches(_ el: SemanticElement, id: String?, text: String?, fuzzy: String?, type: String?, viewportOnly: Bool = true) -> Bool {
+        if viewportOnly {
+            let screenH = UIScreen.main.bounds.height
+            let cy = el.bounds.midY
+            if cy < 0 || cy > screenH { return false }
+        }
         if let t = type, !el.semanticType.lowercased().contains(t.lowercased()) { return false }
         if let mid = id, el.a11yId == mid { return true }
         if let mt = text, el.content == mt { return true }
@@ -357,7 +372,7 @@ private final class SemanticServer {
                 let result = self.freshWalk()
                 var found: SemanticElement?
                 for el in result.elements {
-                    if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType) { found = el; break }
+                    if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType, viewportOnly: false) { found = el; break }
                 }
 
                 if let el = found {
@@ -372,7 +387,7 @@ private final class SemanticServer {
                 walker.walkWithScroll(steps: maxScroll) { scrollResult in
                     var scrollFound: SemanticElement?
                     for el in scrollResult.elements {
-                        if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType) { scrollFound = el; break }
+                        if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType, viewportOnly: false) { scrollFound = el; break }
                     }
                     let waitMs = Int(Date().timeIntervalSince(startTime) * 1000)
                     if let el = scrollFound {
@@ -413,6 +428,94 @@ private final class SemanticServer {
         return inner.components(separatedBy: ",")
             .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
             .filter { !$0.isEmpty }
+    }
+
+    // MARK: - /pop-to-root
+
+    private func handlePopToRoot(_ conn: NWConnection) {
+        DispatchQueue.main.async {
+            guard let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow),
+                  let root = window.rootViewController else {
+                self.send(conn, status: "200 OK", type: "application/json",
+                          body: "{\"popped\":false,\"error\":\"no root view controller\"}")
+                return
+            }
+
+            var dismissed = 0
+            var vc: UIViewController = root
+            while let presented = vc.presentedViewController {
+                presented.dismiss(animated: false)
+                dismissed += 1
+                vc = presented
+            }
+
+            var popped = 0
+            func popNavControllers(_ controller: UIViewController) {
+                if let nav = controller as? UINavigationController, nav.viewControllers.count > 1 {
+                    nav.popToRootViewController(animated: false)
+                    popped += nav.viewControllers.count - 1
+                }
+                for child in controller.children {
+                    popNavControllers(child)
+                }
+            }
+            popNavControllers(root)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.send(conn, status: "200 OK", type: "application/json",
+                          body: "{\"popped\":true,\"dismissed\":\(dismissed),\"nav_popped\":\(popped)}")
+            }
+        }
+    }
+
+    // MARK: - /mock + /unmock
+
+    private func handleMock(_ conn: NWConnection, req: String) {
+        let body = extractBody(req)
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let mocks = json["mocks"] as? [[String: Any]] else {
+            send(conn, status: "400 Bad Request", type: "application/json",
+                 body: "{\"error\":\"invalid mock request\"}")
+            return
+        }
+
+        var entries: [MockEntry] = []
+        for mock in mocks {
+            guard let urlPattern = mock["url_pattern"] as? String,
+                  let response = mock["response"] as? [String: Any] else { continue }
+            let method = (mock["method"] as? String) ?? "*"
+            let status = (response["status"] as? Int) ?? 200
+            let headers = (response["headers"] as? [String: String]) ?? ["Content-Type": "application/json"]
+            let responseBody: Data
+            if let bodyObj = response["body"] {
+                responseBody = (try? JSONSerialization.data(withJSONObject: bodyObj)) ?? Data()
+            } else {
+                responseBody = Data()
+            }
+            entries.append(MockEntry(urlPattern: urlPattern, method: method,
+                                     response: MockResponse(status: status, body: responseBody, headers: headers)))
+        }
+
+        MockRegistry.shared.register(mocks: entries)
+        send(conn, status: "200 OK", type: "application/json",
+             body: "{\"registered\":\(entries.count),\"total\":\(MockRegistry.shared.count)}")
+    }
+
+    private func handleUnmock(_ conn: NWConnection, req: String) {
+        let body = extractBody(req)
+        if let data = body.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let urlPattern = json["url_pattern"] as? String {
+            MockRegistry.shared.clear(urlPattern: urlPattern)
+        } else {
+            MockRegistry.shared.clear()
+        }
+        send(conn, status: "200 OK", type: "application/json",
+             body: "{\"cleared\":true,\"remaining\":\(MockRegistry.shared.count)}")
     }
 
     // MARK: - Helpers
