@@ -1,67 +1,67 @@
-# SemanticAgent — iOS
+# semantic-agent (iOS)
 
-Embeddable HTTP server for automated QA. Exposes the app's accessibility tree, idle state, and mock layer over HTTP. Debug builds only.
+Debug-only in-process HTTP server exposing the iOS accessibility tree, idle state, and tap/type surface for automated QA. Distributed as a local Swift Package.
 
-## Integration
+See [tctl/docs/agent-porting-guide.md](../../tctl/docs/agent-porting-guide.md) for the cross-platform contract and [tctl/docs/agent-capability-matrix.md](../../tctl/docs/agent-capability-matrix.md) for per-platform feature status.
 
-### 1. Add Swift Package dependency
+## Recent SHAs
 
-In Xcode: File → Add Package Dependencies → Add Local → select this directory.
+| SHA | Change |
+|---|---|
+| ea6f281 | `POST /text-field/set` (`insertText`) + `POST /keyboard/dismiss` |
+| 5d42d31 | `NetworkIdleURLProtocol` module prefix fix |
+| 288d88b | `URLSession.shared` swizzle (mock + network-idle protocolClasses) |
+| ab251b2 | Layer 1 fixtures + 8 YAMLParserTests |
+| dbd9848 | Crawl consolidated onto shared test primitives |
 
-Or in `Package.swift`:
+## Consume
+
 ```swift
+// Package.swift
 .package(path: "../semantic-agent")
+
+// App target
+.product(name: "SemanticAgent", package: "SemanticAgent",
+         condition: .when(platforms: [.iOS]))
 ```
 
-### 2. Add to your target (debug only)
+Xcode: add `SemanticAgent` to app target's Frameworks/Libraries/Embedded Content; restrict to Debug config.
 
-```swift
-// In your app target's dependencies:
-.product(name: "SemanticAgent", package: "SemanticAgent", condition: .when(platforms: [.iOS]))
-```
-
-In Xcode: add `SemanticAgent` to your app target's "Frameworks, Libraries, and Embedded Content" — set to Debug configuration only.
-
-### 3. Start the agent
-
-In your `AppDelegate` or `@main` App struct:
+## Start
 
 ```swift
 #if DEBUG
 import SemanticAgent
-
-// In application(_:didFinishLaunchingWithOptions:) or init:
 SemanticAgent.shared.start()
 #endif
 ```
 
-The agent listens on port 9877 by default. Override via `IDB_AGENT_PORT` environment variable.
-
-### 4. MockBootstrap (automatic)
-
-`MockBootstrap.m` runs at `+load` time — no manual setup needed. It swizzles `URLSessionConfiguration.protocolClasses` so all URL sessions route through `MockURLProtocol` when mocks are registered.
+Default port `9877` (override via `IDB_AGENT_PORT`). `MockBootstrap.m` runs at `+load`; no manual setup required for the mock layer.
 
 ## Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /health | Agent status |
-| GET | /version | Git hash + build time |
-| GET | /semantic | Full accessibility tree (YAML) |
-| GET | /idle | Idle state (true/false) |
-| GET | /idle-resources | Per-resource idle status |
-| POST | /query-when-idle | Wait for idle, then find element |
-| POST | /scroll-search | Scroll + search for element |
-| POST | /mock | Register URL mock |
-| POST | /unmock | Remove URL mock |
-| GET | /mock-status | Mock hit log |
-| POST | /pop-to-root | Dismiss all modals, pop navigation |
-| GET | /overlay | Debug overlay |
-| POST | /animations | Animation control |
+| Method | Path | Notes |
+|---|---|---|
+| GET  | `/health` | agent status |
+| GET  | `/version` | git hash + build time |
+| GET  | `/semantic` | accessibility tree as YAML |
+| GET  | `/semantic?scroll=0` | full-page semantic |
+| GET  | `/idle` | `{"idle":bool}` |
+| GET  | `/idle-resources` | per-resource status |
+| POST | `/query-when-idle` | wait for idle + element |
+| POST | `/scroll-search` | scroll until element surfaces |
+| POST | `/click` | tap by `{resource_id|content_fuzzy|bounds}` |
+| POST | `/text-field/set` (ea6f281) | atomic `insertText` on focused field; required for SwiftUI `SecureTextField` (WDA keystroke drops chars) |
+| POST | `/keyboard/dismiss` (ea6f281) | `UIApplication.sendAction(#selector(UIResponder.resignFirstResponder))` |
+| POST | `/mock` | register mock URL rules |
+| POST | `/unmock` | clear mocks |
+| GET  | `/mock-status` | hit log |
+| POST | `/pop-to-root` | dismiss modals, pop nav |
+| GET  | `/overlay` | optional debug overlay |
+| POST | `/animations` | animation toggle |
 
-## Mock Layer
+## Mock body
 
-Register mocks via POST /mock:
 ```json
 {
   "mocks": [{
@@ -76,20 +76,23 @@ Register mocks via POST /mock:
 }
 ```
 
-Mocks match on `url.path.contains(pattern)`. Register order matters — first match wins.
+Match: `url.path.contains(pattern)`. First-match-wins.
 
-## Known Limitations
+## Endpoint selection
 
-### URLSession.shared bypasses MockURLProtocol
-
-The `+load` swizzle injects `MockURLProtocol` into `URLSessionConfiguration.default.protocolClasses`. This intercepts requests made via sessions created with `.default` configuration. However, `URLSession.shared` has a fixed internal configuration that ignores `protocolClasses` changes after process launch.
-
-**Impact:** Code using `URLSession.shared` (e.g., third-party SDKs, search clients like Typesense) will not have its requests intercepted by mocks.
-
-**Workaround:** App code should use `URLSession(configuration: .default)` or the app's own configured session instead of `.shared` for any endpoints that need mock coverage during QA.
+| Use case | Endpoint | Why |
+|---|---|---|
+| Plain text input | `insertText` via `/text-field/set` | atomic, no per-char drops |
+| `SecureTextField` (password) | `/text-field/set` (required) | WDA `/type` drops chars on SwiftUI secure fields |
+| Tap addressable element | `/click` with `resource_id` | stable |
+| Dismiss keyboard between fields | `/keyboard/dismiss` | required so `Log in` button isn't off-screen |
 
 ## Requirements
 
 - iOS 16+
 - Swift 5.9+
-- Debug configuration only (all source files wrapped in `#if DEBUG`)
+- Debug only (`#if DEBUG` wrapped; release builds contain no agent symbols)
+
+## Known limitations
+
+See [tctl/docs/agent-capability-matrix.md](../../tctl/docs/agent-capability-matrix.md) §"Known limitations" rows L1 (`URLSession.shared`), L3 (SecureTextField via WDA — superseded by `/text-field/set`), L4 (SwiftUI cached tab leakage), L10 (test-data gaps for Q&A asserts).
