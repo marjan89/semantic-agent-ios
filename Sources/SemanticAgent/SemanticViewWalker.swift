@@ -43,7 +43,7 @@ public final class SemanticWalker {
         }
 
         let screenName = resolveScreenName(window)
-        let walkRoot = topMostView(in: window) ?? window
+        let walkRoot = activeContentView(in: window) ?? window
         walkView(walkRoot, depth: 0, parentExternal: false)
 
         let a11yFonts = harvestAccessibilityFonts(in: window)
@@ -945,6 +945,25 @@ public final class SemanticWalker {
             .replacingOccurrences(of: "_UI", with: "")
         let lower = name.lowercased()
         return lower.count > 20 ? String(lower.prefix(20)) : lower
+    }
+
+    private func activeContentView(in window: UIWindow) -> UIView? {
+        let screenBounds = UIScreen.main.bounds
+        let centerPoint = CGPoint(x: screenBounds.midX, y: screenBounds.midY)
+        guard let hitView = window.hitTest(centerPoint, with: nil) else { return nil }
+        // Walk up from hit view to find the highest container that's a meaningful content root
+        // (typically the UIHostingController's content view or a navigation container)
+        var candidate = hitView
+        while let parent = candidate.superview {
+            let cls = String(describing: type(of: parent))
+            // Stop at window level or known container boundaries
+            if parent === window { break }
+            if cls.contains("UITransitionView") || cls.contains("UINavigationTransitionView") {
+                return parent
+            }
+            candidate = parent
+        }
+        return candidate
     }
 
     private func topMostView(in window: UIWindow) -> UIView? {
