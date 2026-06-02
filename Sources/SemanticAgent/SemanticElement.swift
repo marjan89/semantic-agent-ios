@@ -1,7 +1,7 @@
 #if DEBUG
 import UIKit
 
-struct SemanticElement {
+public struct SemanticElement {
     let id: String
     let platformId: String
     let semanticType: String

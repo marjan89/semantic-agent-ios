@@ -1,7 +1,7 @@
 #if DEBUG
 import UIKit
 
-enum SemanticYAMLEmitter {
+public enum SemanticYAMLEmitter {
 
     static func emit(elements: [SemanticElement], screen: String, device: String,
                       scrollMeta: ScrollCaptureMeta? = nil) -> String {

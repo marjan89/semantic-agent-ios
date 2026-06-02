@@ -3,18 +3,18 @@ import UIKit
 import MapKit
 import WebKit
 
-struct ScrollStepMeta {
+public struct ScrollStepMeta {
     let step: Int
     let offsetY: CGFloat
 }
 
-struct ScrollCaptureMeta {
+public struct ScrollCaptureMeta {
     let scrollViewFrame: CGRect
     let contentSize: CGSize
     let steps: [ScrollStepMeta]
 }
 
-struct WalkResult {
+public struct WalkResult {
     let elements: [SemanticElement]
     let screenName: String
     let deviceName: String
@@ -22,7 +22,7 @@ struct WalkResult {
     let scrollMeta: ScrollCaptureMeta?
 }
 
-final class SemanticWalker {
+public final class SemanticWalker {
 
     private var elements: [SemanticElement] = []
     private var globalZ = 0

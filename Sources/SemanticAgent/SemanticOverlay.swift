@@ -1,14 +1,14 @@
 #if DEBUG
 import UIKit
 
-final class OverlayWindow: UIWindow {}
+public final class OverlayWindow: UIWindow {}
 
-enum OverlayMode {
+public enum OverlayMode {
     case stroke
     case fill
 }
 
-enum SemanticOverlay {
+public enum SemanticOverlay {
 
     static func draw(elements: [SemanticElement], mode: OverlayMode,
                      scene: UIWindowScene) -> (window: OverlayWindow, colorMap: [(id: String, z: Int, r: Int, g: Int, b: Int)]) {

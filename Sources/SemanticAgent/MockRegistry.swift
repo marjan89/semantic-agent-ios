@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - Mock Registry Protocol
 
-protocol MockRegistryProtocol {
+public protocol MockRegistryProtocol {
     func canHandle(url: URL, method: String) -> Bool
     func handle(url: URL, method: String) -> MockResponse?
     func register(mocks: [MockEntry])
@@ -11,13 +11,13 @@ protocol MockRegistryProtocol {
     func clear(urlPattern: String)
 }
 
-struct MockEntry {
+public struct MockEntry {
     let urlPattern: String
     let method: String
     let response: MockResponse
 }
 
-struct MockResponse {
+public struct MockResponse {
     let status: Int
     let body: Data
     let headers: [String: String]
@@ -25,12 +25,12 @@ struct MockResponse {
 
 // MARK: - Mock Registry Implementation
 
-final class MockRegistry: MockRegistryProtocol {
-    static let shared = MockRegistry()
+public final class MockRegistry: MockRegistryProtocol {
+    public static let shared = MockRegistry()
     private var entries: [MockEntry] = []
     private let lock = NSLock()
 
-    func canHandle(url: URL, method: String) -> Bool {
+    public func canHandle(url: URL, method: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         return entries.contains { entry in
@@ -39,7 +39,7 @@ final class MockRegistry: MockRegistryProtocol {
         }
     }
 
-    func handle(url: URL, method: String) -> MockResponse? {
+    public func handle(url: URL, method: String) -> MockResponse? {
         lock.lock()
         defer { lock.unlock() }
         return entries.first { entry in
@@ -48,25 +48,25 @@ final class MockRegistry: MockRegistryProtocol {
         }?.response
     }
 
-    func register(mocks: [MockEntry]) {
+    public func register(mocks: [MockEntry]) {
         lock.lock()
         entries.append(contentsOf: mocks)
         lock.unlock()
     }
 
-    func clear() {
+    public func clear() {
         lock.lock()
         entries.removeAll()
         lock.unlock()
     }
 
-    func clear(urlPattern: String) {
+    public func clear(urlPattern: String) {
         lock.lock()
         entries.removeAll { $0.urlPattern == urlPattern }
         lock.unlock()
     }
 
-    var count: Int {
+    public var count: Int {
         lock.lock()
         defer { lock.unlock() }
         return entries.count
@@ -82,7 +82,7 @@ final class MockRegistry: MockRegistryProtocol {
         lock.unlock()
     }
 
-    func hitSummary() -> String {
+    public func hitSummary() -> String {
         lock.lock()
         defer { lock.unlock() }
         let entries = hitLog.map { "\($0.method) \($0.url) → \($0.status)" }
@@ -92,8 +92,8 @@ final class MockRegistry: MockRegistryProtocol {
 
 // MARK: - URLProtocol Adapter
 
-final class MockURLProtocol: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool {
+public final class MockURLProtocol: URLProtocol {
+    override public class func canInit(with request: URLRequest) -> Bool {
         guard let url = request.url else { return false }
         if url.host == "127.0.0.1" || url.host == "localhost" { return false }
         let can = MockRegistry.shared.canHandle(url: url, method: request.httpMethod ?? "GET")
@@ -103,9 +103,9 @@ final class MockURLProtocol: URLProtocol {
         return can
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override public class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
-    override func startLoading() {
+    override public func startLoading() {
         guard let url = request.url,
               let mock = MockRegistry.shared.handle(url: url, method: request.httpMethod ?? "GET") else {
             client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
@@ -126,14 +126,14 @@ final class MockURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override public func stopLoading() {}
 
-    static func install() {
+    public static func install() {
         URLProtocol.registerClass(MockURLProtocol.self)
         swizzleSessionConfiguration()
     }
 
-    static func uninstall() {
+    public static func uninstall() {
         URLProtocol.unregisterClass(MockURLProtocol.self)
         unswizzleSessionConfiguration()
     }

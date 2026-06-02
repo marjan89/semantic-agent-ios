@@ -1,7 +1,7 @@
 #if DEBUG
 import UIKit
 
-struct ViewDebugProperty {
+public struct ViewDebugProperty {
     let bounds: CGRect
     let fontFamily: String?
     let fontSize: CGFloat?
@@ -10,15 +10,15 @@ struct ViewDebugProperty {
     let lineLimit: Int?
 }
 
-enum ViewDebugBridge {
+public enum ViewDebugBridge {
 
-    static var lastLog = ""
-    static var activationLog = ""
+    public static var lastLog = ""
+    public static var activationLog = ""
 
     private static var propertiesEnabled = false
     private static var activationFailed = false
 
-    static func activate() {
+    public static func activate() {
         guard !propertiesEnabled, !activationFailed else { return }
         enableViewDebugProperties()
         propertiesEnabled = true

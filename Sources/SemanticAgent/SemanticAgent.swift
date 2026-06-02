@@ -4,20 +4,20 @@ import Network
 import SwiftUI
 // MARK: - Public API
 
-@MainActor
-final class SemanticAgent {
-    static let shared = SemanticAgent()
+@MainActor @objc
+public final class SemanticAgent: NSObject {
+    @objc public static let shared = SemanticAgent()
     private var server: SemanticServer?
 
-    func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
+    @objc public func start() {
+        let port = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877
         guard server == nil else { return }
         IdleResourceRegistry.shared.installHooks()
-        // MockURLProtocol.install() moved to AppDelegate.init() for timing
         server = SemanticServer(port: port)
         server?.start()
     }
 
-    func stop() {
+    public func stop() {
         server?.stop()
         server = nil
     }
@@ -54,7 +54,7 @@ private final class SemanticServer {
         listener?.start(queue: .global(qos: .userInitiated))
     }
 
-    func stop() {
+    public func stop() {
         listener?.cancel()
         listener = nil
     }
@@ -99,7 +99,7 @@ private final class SemanticServer {
                           body: "{\"status\":\"ok\",\"agent\":\"semantic-agent\",\"version\":\"5.0.0\"}")
             } else if req.hasPrefix("GET /version") {
                 let hash = "95c522f"
-                let buildTime = "2026-06-01T22:53:29Z"
+                let buildTime = "2026-06-02T00:30:23Z"
                 self.send(conn, status: "200 OK", type: "application/json",
                           body: "{\"git_hash\":\"\(hash)\",\"build_time\":\"\(buildTime)\"}")
             } else if req.hasPrefix("POST /query-when-idle") {

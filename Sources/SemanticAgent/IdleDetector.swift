@@ -3,16 +3,16 @@ import UIKit
 
 // MARK: - Idle Resource Protocol
 
-protocol IdleResource {
+public protocol IdleResource {
     var name: String { get }
     func isIdle() -> Bool
 }
 
 // MARK: - Built-in Resources
 
-struct NavigationIdleResource: IdleResource {
-    let name = "navigation"
-    func isIdle() -> Bool {
+public struct NavigationIdleResource: IdleResource {
+    public let name = "navigation"
+    public func isIdle() -> Bool {
         guard let window = keyWindow() else { return true }
         var vc: UIViewController? = window.rootViewController
         while let current = vc {
@@ -26,9 +26,9 @@ struct NavigationIdleResource: IdleResource {
     }
 }
 
-struct AnimationIdleResource: IdleResource {
-    let name = "animation"
-    func isIdle() -> Bool {
+public struct AnimationIdleResource: IdleResource {
+    public let name = "animation"
+    public func isIdle() -> Bool {
         guard let window = keyWindow() else { return true }
         return !viewHasAnimations(window)
     }
@@ -42,9 +42,9 @@ struct AnimationIdleResource: IdleResource {
     }
 }
 
-struct SpinnerIdleResource: IdleResource {
-    let name = "spinner"
-    func isIdle() -> Bool {
+public struct SpinnerIdleResource: IdleResource {
+    public let name = "spinner"
+    public func isIdle() -> Bool {
         guard let window = keyWindow() else { return true }
         return !findSpinner(window)
     }
@@ -64,14 +64,14 @@ struct SpinnerIdleResource: IdleResource {
     }
 }
 
-final class NetworkIdleResource: IdleResource {
-    let name = "network"
-    static let shared = NetworkIdleResource()
+public final class NetworkIdleResource: IdleResource {
+    public let name = "network"
+    public static let shared = NetworkIdleResource()
     private var lastActivityTime: Date = Date()
     private let lock = NSLock()
     private let settleInterval: TimeInterval = 1.5
 
-    func isIdle() -> Bool {
+    public func isIdle() -> Bool {
         lock.lock()
         defer { lock.unlock() }
         return Date().timeIntervalSince(lastActivityTime) > settleInterval
@@ -88,25 +88,25 @@ final class NetworkIdleResource: IdleResource {
     }
 }
 
-final class NetworkIdleURLProtocol: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool {
+public final class NetworkIdleURLProtocol: URLProtocol {
+    override public class func canInit(with request: URLRequest) -> Bool {
         NetworkIdleResource.shared.noteActivity()
         return false
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func startLoading() {}
-    override func stopLoading() {}
+    override public class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override public func startLoading() {}
+    override public func stopLoading() {}
 }
 
-final class PresentationIdleResource: IdleResource {
-    let name = "presentation"
-    static let shared = PresentationIdleResource()
+public final class PresentationIdleResource: IdleResource {
+    public let name = "presentation"
+    public static let shared = PresentationIdleResource()
     private var lastPresentationChange: Date = .distantPast
     private let lock = NSLock()
     private let settleInterval: TimeInterval = 0.5
 
-    func isIdle() -> Bool {
+    public func isIdle() -> Bool {
         let windowCount = activeWindowCount()
         let hasPresentation = hasPendingPresentation()
 
@@ -147,9 +147,9 @@ final class PresentationIdleResource: IdleResource {
     }
 }
 
-struct LayoutIdleResource: IdleResource {
-    let name = "layout"
-    func isIdle() -> Bool {
+public struct LayoutIdleResource: IdleResource {
+    public let name = "layout"
+    public func isIdle() -> Bool {
         guard let window = keyWindow() else { return true }
         return !viewNeedsLayout(window)
     }
@@ -165,8 +165,8 @@ struct LayoutIdleResource: IdleResource {
 
 // MARK: - Registry
 
-final class IdleResourceRegistry {
-    static let shared = IdleResourceRegistry()
+public final class IdleResourceRegistry {
+    public static let shared = IdleResourceRegistry()
 
     private(set) var resources: [IdleResource] = [
         NavigationIdleResource(),
@@ -177,7 +177,7 @@ final class IdleResourceRegistry {
         PresentationIdleResource.shared
     ]
 
-    func installHooks() {
+    public func installHooks() {
         NetworkIdleResource.shared.installHook()
     }
 
@@ -220,7 +220,7 @@ final class IdleResourceRegistry {
 
 // MARK: - Legacy API (backward-compatible)
 
-enum IdleDetector {
+public enum IdleDetector {
     static func isIdle() -> Bool {
         IdleResourceRegistry.shared.isAllIdle()
     }
