@@ -3,8 +3,11 @@ import UIKit
 
 enum SemanticYAMLEmitter {
 
-    static func emit(elements: [SemanticElement], screen: String, device: String) -> String {
+    static func emit(elements: [SemanticElement], screen: String, device: String,
+                      scrollMeta: ScrollCaptureMeta? = nil) -> String {
         let ts = ISO8601DateFormatter().string(from: Date())
+        let screenBounds = UIScreen.main.bounds
+        let scale = UIScreen.main.scale
 
         var y = ""
         y += "screen: \(esc(screen))\n"
@@ -12,6 +15,26 @@ enum SemanticYAMLEmitter {
         y += "platform: ios\n"
         y += "timestamp: \(ts)\n"
         y += "source: instrumented\n"
+        y += "viewport:\n"
+        y += "  width: \(Int(screenBounds.width))\n"
+        y += "  height: \(Int(screenBounds.height))\n"
+        y += "  density: \(scale)\n"
+        if let sm = scrollMeta {
+            y += "scroll_capture:\n"
+            y += "  scroll_view:\n"
+            y += "    x: \(Int(sm.scrollViewFrame.origin.x))\n"
+            y += "    y: \(Int(sm.scrollViewFrame.origin.y))\n"
+            y += "    w: \(Int(sm.scrollViewFrame.width))\n"
+            y += "    h: \(Int(sm.scrollViewFrame.height))\n"
+            y += "  content_size:\n"
+            y += "    w: \(Int(sm.contentSize.width))\n"
+            y += "    h: \(Int(sm.contentSize.height))\n"
+            y += "  steps:\n"
+            for step in sm.steps {
+                y += "  - step: \(step.step)\n"
+                y += "    offset_y: \(Int(step.offsetY))\n"
+            }
+        }
         y += "elements:\n"
 
         for el in elements {
@@ -40,6 +63,52 @@ enum SemanticYAMLEmitter {
             }
             if let ai = el.a11yId, !ai.isEmpty {
                 y += "  a11y_id: \(esc(ai))\n"
+            }
+            if el.fontFamily != nil || el.textColor != nil {
+                if let ff = el.fontFamily {
+                    y += "  font:\n"
+                    y += "    family: \(esc(ff.lowercased()))\n"
+                    if let fs = el.fontSize {
+                        y += "    size: \(Int(fs))\n"
+                    }
+                    if let fw = el.fontWeight {
+                        y += "    weight: \(fw)\n"
+                    }
+                }
+                if let tc = el.textColor {
+                    y += "  color: \(esc(tc))\n"
+                }
+                if let lc = el.lineCount {
+                    y += "  line_count: \(lc)\n"
+                }
+                if let tr = el.truncated {
+                    y += "  truncated: \(tr)\n"
+                }
+            }
+            if let bg = el.background {
+                y += "  background: \(esc(bg))\n"
+            }
+            if let fg = el.foreground {
+                y += "  foreground: \(esc(fg))\n"
+            }
+            if let cr = el.cornerRadius, cr > 0 {
+                y += "  corner_radius: \(Int(cr))\n"
+            }
+            if el.borderWidth > 0 {
+                y += "  border:\n"
+                y += "    width: \(Int(el.borderWidth))\n"
+                if let bc = el.borderColor {
+                    y += "    color: '\(bc)'\n"
+                }
+            }
+            if el.imageResource != nil || el.imagePath != nil {
+                y += "  image:\n"
+                if let res = el.imageResource {
+                    y += "    resource: \(esc(res))\n"
+                }
+                if let path = el.imagePath {
+                    y += "    path: \(esc(path))\n"
+                }
             }
         }
 

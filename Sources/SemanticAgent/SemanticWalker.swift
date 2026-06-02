@@ -52,12 +52,12 @@ final class SemanticWalker {
         let frame = view.convert(view.bounds, to: nil)
         let screenBounds = UIScreen.main.bounds
 
-        if view.isHidden && view.subviews.isEmpty {
-            log += "\(indent)SKIP \(cls) hidden leaf\n"
+        if view.isHidden {
+            log += "\(indent)SKIP \(cls) hidden (subtree pruned)\n"
             return
         }
-        if view.alpha == 0 && view.subviews.isEmpty {
-            log += "\(indent)SKIP \(cls) alpha=0 leaf\n"
+        if view.alpha == 0 {
+            log += "\(indent)SKIP \(cls) alpha=0 (subtree pruned)\n"
             return
         }
 
@@ -68,49 +68,60 @@ final class SemanticWalker {
             return
         }
 
-        let isExternal = view is MKMapView || view is WKWebView
+        let clipped = frame.minX < 0 || frame.minY < 0
 
-        let content = extractContent(view)
-        let platformId = view.accessibilityIdentifier ?? ""
-        let semanticType = classifyType(view, content: content)
-
-        let id: String
-        if let c = content, !c.isEmpty {
-            id = slugify(c)
-        } else if !platformId.isEmpty {
-            id = slugify(platformId)
+        if clipped {
+            log += "\(indent)CLIP \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height))) viewport-clipped\n"
         } else {
-            id = "\(shortenClass(cls))_\(Int(frame.minX))_\(Int(frame.minY))"
+            let isExternal = view is MKMapView || view is WKWebView
+
+            let content = extractContent(view)
+            let platformId = view.accessibilityIdentifier ?? ""
+            let semanticType = classifyType(view, content: content)
+
+            let id: String
+            if let c = content, !c.isEmpty {
+                id = slugify(c)
+            } else if !platformId.isEmpty {
+                id = slugify(platformId)
+            } else {
+                id = "\(shortenClass(cls))_\(Int(frame.minX))_\(Int(frame.minY))"
+            }
+
+            let clickable = view.isUserInteractionEnabled && (
+                view is UIControl ||
+                view.accessibilityTraits.contains(.button) ||
+                view.accessibilityTraits.contains(.link) ||
+                (view.gestureRecognizers?.contains(where: { $0 is UITapGestureRecognizer || $0 is UILongPressGestureRecognizer }) == true)
+            )
+
+            let element = SemanticElement(
+                id: id,
+                platformId: platformId,
+                semanticType: semanticType,
+                content: content,
+                bounds: frame,
+                zIndex: globalZ,
+                clickable: clickable,
+                enabled: view.isUserInteractionEnabled,
+                render: (isExternal || parentExternal) ? "external" : nil,
+                accessible: view.isAccessibilityElement,
+                a11yLabel: view.accessibilityLabel,
+                a11yId: view.accessibilityIdentifier
+            )
+            elements.append(element)
+
+            var logLine = "\(indent)EMIT z=\(globalZ) \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height)))"
+            logLine += " type=\(semanticType) id=\(id)"
+            if let c = content, !c.isEmpty { logLine += " content=\"\(c.prefix(40))\"" }
+            if isExternal { logLine += " EXTERNAL" }
+            log += logLine + "\n"
+
+            if isExternal {
+                globalZ += 1
+                return
+            }
         }
-
-        let clickable = view.isUserInteractionEnabled && (
-            view is UIControl ||
-            view.accessibilityTraits.contains(.button) ||
-            view.accessibilityTraits.contains(.link) ||
-            (view.gestureRecognizers?.contains(where: { $0 is UITapGestureRecognizer || $0 is UILongPressGestureRecognizer }) == true)
-        )
-
-        let element = SemanticElement(
-            id: id,
-            platformId: platformId,
-            semanticType: semanticType,
-            content: content,
-            bounds: frame,
-            zIndex: globalZ,
-            clickable: clickable,
-            enabled: view.isUserInteractionEnabled,
-            render: (isExternal || parentExternal) ? "external" : nil,
-            accessible: view.isAccessibilityElement,
-            a11yLabel: view.accessibilityLabel,
-            a11yId: view.accessibilityIdentifier
-        )
-        elements.append(element)
-
-        var logLine = "\(indent)EMIT z=\(globalZ) \(cls) (\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height)))"
-        logLine += " type=\(semanticType) id=\(id)"
-        if let c = content, !c.isEmpty { logLine += " content=\"\(c.prefix(40))\"" }
-        if isExternal { logLine += " EXTERNAL" }
-        log += logLine + "\n"
 
         globalZ += 1
 
@@ -154,10 +165,7 @@ final class SemanticWalker {
 
             let traits = axEl.accessibilityTraits
             let synType: String
-            if traits.contains(.button) { synType = "button" }
-            else if traits.contains(.image) { synType = "image" }
-            else if traits.contains(.staticText) { synType = "text" }
-            else { synType = "text" }
+            if traits.contains(.button) { synType = "button" } else if traits.contains(.image) { synType = "image" } else if traits.contains(.staticText) { synType = "text" } else { synType = "text" }
 
             let synElement = SemanticElement(
                 id: slugify(label),
@@ -192,6 +200,42 @@ final class SemanticWalker {
         }
         if let sw = view as? UISwitch { return sw.isOn ? "on" : "off" }
         if let axLabel = view.accessibilityLabel, !axLabel.isEmpty { return axLabel }
+        if view is UIControl {
+            if let text = findLabelText(in: view) { return text }
+        }
+        if view.accessibilityTraits.contains(.button) || view is UIControl {
+            let cls = String(describing: type(of: view))
+            if cls.contains("TabBarButton") || cls.contains("BarButton") {
+                for sub in view.subviews {
+                    let subCls = String(describing: type(of: sub))
+                    if subCls.contains("Label") || subCls.contains("Text") {
+                        if sub.responds(to: NSSelectorFromString("attributedText")),
+                           let attrText = sub.perform(NSSelectorFromString("attributedText"))?.takeUnretainedValue() as? NSAttributedString,
+                           !attrText.string.isEmpty {
+                            return attrText.string
+                        }
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func findLabelText(in view: UIView) -> String? {
+        for sub in view.subviews {
+            if let label = sub as? UILabel, let text = label.text, !text.isEmpty { return text }
+            if sub.responds(to: Selector(("text"))),
+               let text = sub.perform(Selector(("text")))?.takeUnretainedValue() as? String,
+               !text.isEmpty { return text }
+            if let axLabel = sub.accessibilityLabel, !axLabel.isEmpty { return axLabel }
+            if let text = findLabelText(in: sub) { return text }
+        }
+        if let axElements = view.accessibilityElements {
+            for axEl in axElements {
+                if let axEl = axEl as? NSObject,
+                   let label = axEl.accessibilityLabel, !label.isEmpty { return label }
+            }
+        }
         return nil
     }
 

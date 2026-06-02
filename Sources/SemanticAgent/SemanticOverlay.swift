@@ -37,6 +37,11 @@ enum SemanticOverlay {
         let strokePt = 4.0 / scale
         var colorMap: [(id: String, z: Int, r: Int, g: Int, b: Int)] = []
 
+        window.layer.contentsScale = scale
+        window.layer.shouldRasterize = false
+        window.layer.allowsEdgeAntialiasing = false
+        window.layer.edgeAntialiasingMask = []
+
         for el in filtered {
             let (r, g, b) = colorFromID(el.id)
             let uiColor = UIColor(
@@ -58,6 +63,10 @@ enum SemanticOverlay {
                 let whiteFill = CALayer()
                 whiteFill.frame = rect
                 whiteFill.backgroundColor = UIColor.white.cgColor
+                whiteFill.contentsScale = scale
+                whiteFill.shouldRasterize = false
+                whiteFill.allowsEdgeAntialiasing = false
+                whiteFill.edgeAntialiasingMask = []
                 window.layer.addSublayer(whiteFill)
 
                 let strokeLayer = CALayer()
@@ -65,12 +74,20 @@ enum SemanticOverlay {
                 strokeLayer.backgroundColor = UIColor.clear.cgColor
                 strokeLayer.borderColor = uiColor.cgColor
                 strokeLayer.borderWidth = strokePt
+                strokeLayer.contentsScale = scale
+                strokeLayer.shouldRasterize = false
+                strokeLayer.allowsEdgeAntialiasing = false
+                strokeLayer.edgeAntialiasingMask = []
                 window.layer.addSublayer(strokeLayer)
 
             case .fill:
                 let layer = CALayer()
                 layer.frame = rect
                 layer.backgroundColor = uiColor.cgColor
+                layer.contentsScale = scale
+                layer.shouldRasterize = false
+                layer.allowsEdgeAntialiasing = false
+                layer.edgeAntialiasingMask = []
                 window.layer.addSublayer(layer)
             }
 
