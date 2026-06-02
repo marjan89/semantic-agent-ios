@@ -15,7 +15,8 @@ static id mock_protocolClasses(id self, SEL _cmd) {
     BOOL changed = NO;
 
     // Insert MockURLProtocol
-    Class mockClass = NSClassFromString(@"MockURLProtocol");
+    Class mockClass = NSClassFromString(@"SemanticAgent.MockURLProtocol");
+    if (!mockClass) mockClass = NSClassFromString(@"MockURLProtocol");
     if (!mockClass) {
         NSString *execName = [[NSBundle mainBundle].infoDictionary objectForKey:@"CFBundleExecutable"];
         if (execName) {
@@ -28,13 +29,8 @@ static id mock_protocolClasses(id self, SEL _cmd) {
     }
 
     // Insert NetworkIdleURLProtocol for URLSession idle tracking
-    Class idleClass = NSClassFromString(@"NetworkIdleURLProtocol");
-    if (!idleClass) {
-        NSString *execName = [[NSBundle mainBundle].infoDictionary objectForKey:@"CFBundleExecutable"];
-        if (execName) {
-            idleClass = NSClassFromString([NSString stringWithFormat:@"%@.NetworkIdleURLProtocol", execName]);
-        }
-    }
+    Class idleClass = NSClassFromString(@"SemanticAgent.NetworkIdleURLProtocol");
+    if (!idleClass) idleClass = NSClassFromString(@"NetworkIdleURLProtocol");
     if (idleClass && ![modified containsObject:idleClass]) {
         [modified addObject:idleClass];
         changed = YES;
