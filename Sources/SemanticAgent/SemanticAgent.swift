@@ -124,6 +124,18 @@ private final class SemanticServer {
                 } else {
                     self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":false,\"error\":\"no login handler registered\"}")
                 }
+            } else if req.hasPrefix("POST /text-field/paste") {
+                let body = self.extractBody(req)
+                let value = self.extractJSONString(body, key: "value") ?? ""
+                DispatchQueue.main.async {
+                    let oldPasteboard = UIPasteboard.general.string
+                    UIPasteboard.general.string = value
+                    UIApplication.shared.sendAction(#selector(UIResponderStandardEditActions.paste(_:)), to: nil, from: nil, for: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        UIPasteboard.general.string = oldPasteboard ?? ""
+                    }
+                    self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":true,\"value\":\"\(self.escJSON(value))\"}")
+                }
             } else if req.hasPrefix("POST /keyboard/dismiss") {
                 DispatchQueue.main.async {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
