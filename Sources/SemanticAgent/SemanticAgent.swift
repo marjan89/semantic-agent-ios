@@ -118,11 +118,31 @@ private final class SemanticServer {
                 let value = self.extractJSONString(body, key: "value") ?? ""
                 DispatchQueue.main.async {
                     if let field = self.findFocusedTextField() {
-                        let start = field.beginningOfDocument
-                        let end = field.endOfDocument
-                        field.selectedTextRange = field.textRange(from: start, to: end)
-                        field.insertText(value)
-                        self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":true,\"value\":\"\(self.escJSON(value))\"}")
+                        let isSecure = field.isSecureTextEntry
+                        if isSecure {
+                            // SecureField: must use keyboard input path. Type char by char with retries.
+                            // Clear existing
+                            let existing = field.text ?? ""
+                            for _ in 0..<existing.count {
+                                field.deleteBackward()
+                            }
+                            // Type each char individually
+                            for ch in value {
+                                field.insertText(String(ch))
+                                Thread.sleep(forTimeInterval: 0.05)
+                            }
+                            let final = field.text ?? ""
+                            self.send(conn, status: "200 OK", type: "application/json",
+                                      body: "{\"ok\":true,\"value\":\"\(self.escJSON(value))\",\"actual_len\":\(final.count),\"secure\":true}")
+                        } else {
+                            // Regular TextField: insertText works with SwiftUI binding
+                            let start = field.beginningOfDocument
+                            let end = field.endOfDocument
+                            field.selectedTextRange = field.textRange(from: start, to: end)
+                            field.insertText(value)
+                            self.send(conn, status: "200 OK", type: "application/json",
+                                      body: "{\"ok\":true,\"value\":\"\(self.escJSON(value))\",\"secure\":false}")
+                        }
                     } else {
                         self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":false,\"error\":\"no focused text field\"}")
                     }
