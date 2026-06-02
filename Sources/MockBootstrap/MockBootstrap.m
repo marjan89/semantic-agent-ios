@@ -6,6 +6,7 @@
 // This runs before ANY Swift code, including @Injected property wrappers
 
 static IMP original_protocolClasses = NULL;
+static NSURLSession *swizzledSharedSession = nil;
 
 static id mock_protocolClasses(id self, SEL _cmd) {
     NSArray *original = ((id(*)(id, SEL))original_protocolClasses)(self, _cmd);
@@ -24,6 +25,14 @@ static id mock_protocolClasses(id self, SEL _cmd) {
     return original;
 }
 
+static NSURLSession * mock_sharedSession(id self, SEL _cmd) {
+    if (!swizzledSharedSession) {
+        NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+        swizzledSharedSession = [NSURLSession sessionWithConfiguration:config];
+    }
+    return swizzledSharedSession;
+}
+
 @interface MockBootstrap : NSObject
 @end
 
@@ -34,6 +43,12 @@ static id mock_protocolClasses(id self, SEL _cmd) {
     if (m) {
         original_protocolClasses = method_setImplementation(m, (IMP)mock_protocolClasses);
         NSLog(@"[MockBootstrap] protocolClasses swizzled via +load");
+    }
+    // Swizzle +[NSURLSession sharedSession] to return a session with our config
+    Method shared = class_getClassMethod([NSURLSession class], @selector(sharedSession));
+    if (shared) {
+        method_setImplementation(shared, (IMP)mock_sharedSession);
+        NSLog(@"[MockBootstrap] NSURLSession.sharedSession swizzled — routes through default config");
     }
     // Autostart the agent after Swift runtime is ready
     dispatch_async(dispatch_get_main_queue(), ^{
