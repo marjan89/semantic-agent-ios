@@ -293,9 +293,10 @@ private final class SemanticServer {
 
     private func elementMatches(_ el: SemanticElement, id: String?, text: String?, fuzzy: String?, type: String?, viewportOnly: Bool = false) -> Bool {
         if viewportOnly {
-            let screenH = UIScreen.main.bounds.height
+            let screen = UIScreen.main.bounds
+            let cx = el.bounds.midX
             let cy = el.bounds.midY
-            if cy < 0 || cy > screenH { return false }
+            if cx < 0 || cx > screen.width || cy < 0 || cy > screen.height { return false }
         }
         if let t = type, !el.semanticType.lowercased().contains(t.lowercased()) { return false }
         if let mid = id, el.a11yId == mid { return true }
@@ -336,10 +337,15 @@ private final class SemanticServer {
                 let result = self.freshWalk()
                 let elements = result.elements
 
+                let screenBounds = UIScreen.main.bounds
                 var found: SemanticElement?
                 for el in elements {
                     if self.elementMatches(el, id: matchId, text: matchText, fuzzy: matchFuzzy, type: matchType) {
-                        found = el; break
+                        let inViewport = el.bounds.midX >= 0 && el.bounds.midX <= screenBounds.width &&
+                                         el.bounds.midY >= 0 && el.bounds.midY <= screenBounds.height
+                        if inViewport {
+                            found = el; break
+                        }
                     }
                 }
 
