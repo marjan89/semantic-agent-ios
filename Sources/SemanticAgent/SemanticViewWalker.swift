@@ -66,16 +66,7 @@ public final class SemanticWalker {
             log += "POST-FILTER: ghost touch removed \(removed) elements (\(beforeGhost) → \(filtered.count))\n"
         }
 
-        let screenBounds = window.screen.bounds
-        let viewportFiltered = filtered.filter { el in
-            el.bounds.intersects(screenBounds)
-        }
-        let vpRemoved = filtered.count - viewportFiltered.count
-        if vpRemoved > 0 {
-            log += "POST-FILTER: viewport clipped \(vpRemoved) off-screen elements (\(filtered.count) → \(viewportFiltered.count))\n"
-        }
-
-        return WalkResult(elements: viewportFiltered, screenName: screenName,
+        return WalkResult(elements: filtered, screenName: screenName,
                           deviceName: UIDevice.current.name, log: log, scrollMeta: nil)
     }
 
