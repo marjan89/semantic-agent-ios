@@ -186,7 +186,8 @@ public final class IdleResourceRegistry {
     }
 
     func isAllIdle(named: [String]) -> Bool {
-        let filtered = named.isEmpty ? resources : resources.filter { named.contains($0.name) }
+        if named.isEmpty { return true }
+        let filtered = resources.filter { named.contains($0.name) }
         return filtered.allSatisfy { $0.isIdle() }
     }
 
