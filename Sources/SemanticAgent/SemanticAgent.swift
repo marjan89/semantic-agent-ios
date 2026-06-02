@@ -404,9 +404,19 @@ private final class SemanticServer {
                     }
                     let waitMs = Int(Date().timeIntervalSince(startTime) * 1000)
                     if let el = scrollFound {
+                        // Scroll directly to the element's position
+                        if let window = UIApplication.shared.connectedScenes
+                            .compactMap({ $0 as? UIWindowScene })
+                            .flatMap(\.windows)
+                            .first(where: { $0.isKeyWindow && !($0 is OverlayWindow) }),
+                           let sv = self.findScrollView(in: window) {
+                            let targetY = max(0, min(el.bounds.midY - sv.bounds.height / 2,
+                                                     sv.contentSize.height - sv.bounds.height))
+                            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
+                        }
                         let contentStr = self.escJSON(el.content ?? "")
                         self.send(conn, status: "200 OK", type: "application/json",
-                                  body: "{\"found\":true,\"element\":{\"x\":\(Int(el.bounds.midX)),\"y\":\(Int(el.bounds.midY)),\"w\":\(Int(el.bounds.width)),\"h\":\(Int(el.bounds.height)),\"content\":\"\(contentStr)\",\"type\":\"\(el.semanticType)\"},\"scrolls\":\(maxScroll),\"scroll_restored\":\(restoreScroll),\"idle_wait_ms\":\(waitMs)}")
+                                  body: "{\"found\":true,\"element\":{\"x\":\(Int(el.bounds.midX)),\"y\":\(Int(el.bounds.midY)),\"w\":\(Int(el.bounds.width)),\"h\":\(Int(el.bounds.height)),\"content\":\"\(contentStr)\",\"type\":\"\(el.semanticType)\"},\"scrolls\":\(maxScroll),\"scroll_restored\":false,\"idle_wait_ms\":\(waitMs)}")
                     } else {
                         self.send(conn, status: "200 OK", type: "application/json",
                                   body: "{\"found\":false,\"scrolls\":\(maxScroll),\"timeout\":false,\"idle_wait_ms\":\(waitMs)}")
@@ -523,6 +533,16 @@ private final class SemanticServer {
     }
 
     // MARK: - Helpers
+
+    private func findScrollView(in view: UIView) -> UIScrollView? {
+        if let sv = view as? UIScrollView, sv.contentSize.height > sv.bounds.height + 1 {
+            return sv
+        }
+        for sub in view.subviews {
+            if let found = findScrollView(in: sub) { return found }
+        }
+        return nil
+    }
 
     private func extractBody(_ req: String) -> String {
         guard let range = req.range(of: "\r\n\r\n") else { return "" }
