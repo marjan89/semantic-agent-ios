@@ -108,6 +108,25 @@ private final class SemanticServer {
             } else if req.hasPrefix("POST /scroll-search") {
                 self.agentLog("POST", "/scroll-search", durationMs: 0)
                 self.handleScrollSearch(conn, req: req)
+            } else if req.hasPrefix("POST /keyboard/dismiss") {
+                DispatchQueue.main.async {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":true}")
+                }
+            } else if req.hasPrefix("POST /text-field/set") {
+                let body = self.extractBody(req)
+                let value = self.extractJSONString(body, key: "value") ?? ""
+                DispatchQueue.main.async {
+                    if let field = self.findFocusedTextField() {
+                        let start = field.beginningOfDocument
+                        let end = field.endOfDocument
+                        field.selectedTextRange = field.textRange(from: start, to: end)
+                        field.insertText(value)
+                        self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":true,\"value\":\"\(self.escJSON(value))\"}")
+                    } else {
+                        self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":false,\"error\":\"no focused text field\"}")
+                    }
+                }
             } else if req.hasPrefix("POST /pop-to-root") {
                 self.agentLog("POST", "/pop-to-root", durationMs: 0)
                 self.handlePopToRoot(conn)
@@ -539,6 +558,22 @@ private final class SemanticServer {
     }
 
     // MARK: - Helpers
+
+    private func findFocusedTextField() -> UITextField? {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap(\.windows)
+            .first(where: { $0.isKeyWindow }) else { return nil }
+        return findFirstResponderTextField(in: window)
+    }
+
+    private func findFirstResponderTextField(in view: UIView) -> UITextField? {
+        if let tf = view as? UITextField, tf.isFirstResponder { return tf }
+        for sub in view.subviews {
+            if let found = findFirstResponderTextField(in: sub) { return found }
+        }
+        return nil
+    }
 
     private func findScrollView(in view: UIView) -> UIScrollView? {
         if let sv = view as? UIScrollView, sv.contentSize.height > sv.bounds.height + 1 {
