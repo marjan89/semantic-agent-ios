@@ -10,6 +10,11 @@ static NSURLSession *swizzledSharedSession = nil;
 
 static id mock_protocolClasses(id self, SEL _cmd) {
     NSArray *original = ((id(*)(id, SEL))original_protocolClasses)(self, _cmd);
+
+    NSMutableArray *modified = original ? [NSMutableArray arrayWithArray:original] : [NSMutableArray new];
+    BOOL changed = NO;
+
+    // Insert MockURLProtocol
     Class mockClass = NSClassFromString(@"MockURLProtocol");
     if (!mockClass) {
         NSString *execName = [[NSBundle mainBundle].infoDictionary objectForKey:@"CFBundleExecutable"];
@@ -17,12 +22,25 @@ static id mock_protocolClasses(id self, SEL _cmd) {
             mockClass = NSClassFromString([NSString stringWithFormat:@"%@.MockURLProtocol", execName]);
         }
     }
-    if (mockClass && ![original containsObject:mockClass]) {
-        NSMutableArray *modified = [NSMutableArray arrayWithObject:mockClass];
-        if (original) [modified addObjectsFromArray:original];
-        return modified;
+    if (mockClass && ![modified containsObject:mockClass]) {
+        [modified insertObject:mockClass atIndex:0];
+        changed = YES;
     }
-    return original;
+
+    // Insert NetworkIdleURLProtocol for URLSession idle tracking
+    Class idleClass = NSClassFromString(@"NetworkIdleURLProtocol");
+    if (!idleClass) {
+        NSString *execName = [[NSBundle mainBundle].infoDictionary objectForKey:@"CFBundleExecutable"];
+        if (execName) {
+            idleClass = NSClassFromString([NSString stringWithFormat:@"%@.NetworkIdleURLProtocol", execName]);
+        }
+    }
+    if (idleClass && ![modified containsObject:idleClass]) {
+        [modified addObject:idleClass];
+        changed = YES;
+    }
+
+    return changed ? modified : original;
 }
 
 static NSURLSession * mock_sharedSession(id self, SEL _cmd) {
