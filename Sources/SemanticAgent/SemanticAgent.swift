@@ -7,6 +7,7 @@ import SwiftUI
 @MainActor @objc
 public final class SemanticAgent: NSObject {
     @objc public static let shared = SemanticAgent()
+    public static var loginHandler: ((String, String, @escaping (Bool, String?) -> Void) -> Void)?
     private var server: SemanticServer?
 
     @objc public func start() {
@@ -108,6 +109,21 @@ private final class SemanticServer {
             } else if req.hasPrefix("POST /scroll-search") {
                 self.agentLog("POST", "/scroll-search", durationMs: 0)
                 self.handleScrollSearch(conn, req: req)
+            } else if req.hasPrefix("POST /login") {
+                let body = self.extractBody(req)
+                let email = self.extractJSONString(body, key: "email") ?? ""
+                let password = self.extractJSONString(body, key: "password") ?? ""
+                if let handler = SemanticAgent.loginHandler {
+                    handler(email, password) { success, error in
+                        if success {
+                            self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":true}")
+                        } else {
+                            self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":false,\"error\":\"\(self.escJSON(error ?? "unknown"))\"}")
+                        }
+                    }
+                } else {
+                    self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":false,\"error\":\"no login handler registered\"}")
+                }
             } else if req.hasPrefix("POST /keyboard/dismiss") {
                 DispatchQueue.main.async {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
