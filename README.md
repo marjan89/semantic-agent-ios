@@ -78,6 +78,16 @@ Register mocks via POST /mock:
 
 Mocks match on `url.path.contains(pattern)`. Register order matters — first match wins.
 
+## Known Limitations
+
+### URLSession.shared bypasses MockURLProtocol
+
+The `+load` swizzle injects `MockURLProtocol` into `URLSessionConfiguration.default.protocolClasses`. This intercepts requests made via sessions created with `.default` configuration. However, `URLSession.shared` has a fixed internal configuration that ignores `protocolClasses` changes after process launch.
+
+**Impact:** Code using `URLSession.shared` (e.g., third-party SDKs, search clients like Typesense) will not have its requests intercepted by mocks.
+
+**Workaround:** App code should use `URLSession(configuration: .default)` or the app's own configured session instead of `.shared` for any endpoints that need mock coverage during QA.
+
 ## Requirements
 
 - iOS 16+
