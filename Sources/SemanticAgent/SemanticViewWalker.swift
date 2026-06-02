@@ -43,7 +43,8 @@ public final class SemanticWalker {
         }
 
         let screenName = resolveScreenName(window)
-        walkView(window, depth: 0, parentExternal: false)
+        let walkRoot = topMostView(in: window) ?? window
+        walkView(walkRoot, depth: 0, parentExternal: false)
 
         let a11yFonts = harvestAccessibilityFonts(in: window)
         if !a11yFonts.isEmpty {
@@ -83,9 +84,10 @@ public final class SemanticWalker {
         }
 
         let screenName = resolveScreenName(window)
-        guard let scrollView = findMainScrollView(in: window) else {
+        let walkRoot = topMostView(in: window) ?? window
+        guard let scrollView = findMainScrollView(in: walkRoot) else {
             log += "SCROLL: no UIScrollView found, falling back to single walk\n"
-            walkView(window, depth: 0, parentExternal: false)
+            walkView(walkRoot, depth: 0, parentExternal: false)
             let filtered = filterGhostTouchTargets(elements)
             completion(WalkResult(elements: filtered, screenName: screenName,
                                   deviceName: UIDevice.current.name, log: log, scrollMeta: nil))
@@ -940,6 +942,15 @@ public final class SemanticWalker {
             .replacingOccurrences(of: "_UI", with: "")
         let lower = name.lowercased()
         return lower.count > 20 ? String(lower.prefix(20)) : lower
+    }
+
+    private func topMostView(in window: UIWindow) -> UIView? {
+        var vc = window.rootViewController
+        while let presented = vc?.presentedViewController { vc = presented }
+        if let nav = vc as? UINavigationController { vc = nav.visibleViewController ?? vc }
+        if let tab = vc as? UITabBarController { vc = tab.selectedViewController ?? vc }
+        if let nav = vc as? UINavigationController { vc = nav.visibleViewController ?? vc }
+        return vc?.view
     }
 
     private func resolveScreenName(_ window: UIWindow) -> String {
