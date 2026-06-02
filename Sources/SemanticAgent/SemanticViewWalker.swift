@@ -43,8 +43,7 @@ public final class SemanticWalker {
         }
 
         let screenName = resolveScreenName(window)
-        let walkRoot = activeContentView(in: window) ?? window
-        walkView(walkRoot, depth: 0, parentExternal: false)
+        walkView(window, depth: 0, parentExternal: false)
 
         let a11yFonts = harvestAccessibilityFonts(in: window)
         if !a11yFonts.isEmpty {
@@ -84,10 +83,9 @@ public final class SemanticWalker {
         }
 
         let screenName = resolveScreenName(window)
-        let walkRoot = topMostView(in: window) ?? window
-        guard let scrollView = findMainScrollView(in: walkRoot) else {
+        guard let scrollView = findMainScrollView(in: window) else {
             log += "SCROLL: no UIScrollView found, falling back to single walk\n"
-            walkView(walkRoot, depth: 0, parentExternal: false)
+            walkView(window, depth: 0, parentExternal: false)
             let filtered = filterGhostTouchTargets(elements)
             completion(WalkResult(elements: filtered, screenName: screenName,
                                   deviceName: UIDevice.current.name, log: log, scrollMeta: nil))
@@ -336,8 +334,19 @@ public final class SemanticWalker {
 
         if isExternal { return }
 
-        for subview in view.subviews {
-            walkView(subview, depth: depth + 1, parentExternal: isExternal || parentExternal)
+        let subviews = view.subviews
+        let tabBarIndex = subviews.firstIndex(where: { $0 is UITabBar })
+        if let tbi = tabBarIndex {
+            // Tab bar container: walk only the LAST content view (active tab) + tab bar
+            let contentViews = subviews[..<tbi]
+            if let activeContent = contentViews.last {
+                walkView(activeContent, depth: depth + 1, parentExternal: parentExternal)
+            }
+            walkView(subviews[tbi], depth: depth + 1, parentExternal: parentExternal)
+        } else {
+            for subview in subviews {
+                walkView(subview, depth: depth + 1, parentExternal: isExternal || parentExternal)
+            }
         }
 
         synthesizeAccessibilityChildren(view, depth: depth)
@@ -947,23 +956,30 @@ public final class SemanticWalker {
         return lower.count > 20 ? String(lower.prefix(20)) : lower
     }
 
-    private func activeContentView(in window: UIWindow) -> UIView? {
-        let screenBounds = UIScreen.main.bounds
-        let centerPoint = CGPoint(x: screenBounds.midX, y: screenBounds.midY)
-        guard let hitView = window.hitTest(centerPoint, with: nil) else { return nil }
-        // Walk up from hit view to find the highest container that's a meaningful content root
-        // (typically the UIHostingController's content view or a navigation container)
-        var candidate = hitView
-        while let parent = candidate.superview {
-            let cls = String(describing: type(of: parent))
-            // Stop at window level or known container boundaries
-            if parent === window { break }
-            if cls.contains("UITransitionView") || cls.contains("UINavigationTransitionView") {
-                return parent
-            }
-            candidate = parent
+    private func findTabBarController(for view: UIView) -> UITabBarController? {
+        var responder: UIResponder? = view
+        while let r = responder {
+            if let tbc = r as? UITabBarController { return tbc }
+            responder = r.next
         }
-        return candidate
+        return nil
+    }
+
+    private func activeContentView(in window: UIWindow) -> UIView? {
+        // Find the active tab's content by resolving through the VC hierarchy
+        var vc = window.rootViewController
+        // Follow presented VCs
+        while let presented = vc?.presentedViewController { vc = presented }
+        // Resolve tab bar to selected tab
+        if let tab = vc as? UITabBarController { vc = tab.selectedViewController }
+        // Resolve navigation to visible VC
+        if let nav = vc as? UINavigationController { vc = nav.visibleViewController ?? vc }
+        // For UIHostingController wrapping SwiftUI, return its view
+        // but only if it's different from the window (otherwise fall through)
+        if let view = vc?.view, view !== window {
+            return view
+        }
+        return nil
     }
 
     private func topMostView(in window: UIWindow) -> UIView? {
