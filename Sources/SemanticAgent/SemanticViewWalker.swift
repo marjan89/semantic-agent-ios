@@ -248,6 +248,9 @@ public final class SemanticWalker {
             log += "\(indent)SKIP \(cls) alpha=0 (subtree pruned)\n"
             return
         }
+        if view.accessibilityElementsHidden {
+            return
+        }
 
         guard frame.maxY > 0, frame.minY < screenBounds.height,
               frame.maxX > 0, frame.minX < screenBounds.width,
