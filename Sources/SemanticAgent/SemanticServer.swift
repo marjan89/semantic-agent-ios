@@ -125,6 +125,15 @@ private final class SemanticServer {
             } else if req.hasPrefix("POST /unmock") {
                 self.agentLog("POST", "/unmock", durationMs: 0)
                 self.handleUnmock(conn, req: req)
+            } else if req.hasPrefix("POST /text-field/set") {
+                self.agentLog("POST", "/text-field/set", durationMs: 0)
+                self.handleTextFieldSet(conn, req: req)
+            } else if req.hasPrefix("POST /keyboard/dismiss") {
+                self.agentLog("POST", "/keyboard/dismiss", durationMs: 0)
+                DispatchQueue.main.async {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    self.send(conn, status: "200 OK", type: "application/json", body: "{\"ok\":true}")
+                }
             } else {
                 self.send(conn, status: "404 Not Found", type: "text/plain", body: "not found")
             }
@@ -566,6 +575,120 @@ private final class SemanticServer {
         s.replacingOccurrences(of: "\\", with: "\\\\")
          .replacingOccurrences(of: "\"", with: "\\\"")
          .replacingOccurrences(of: "\n", with: "\\n")
+    }
+
+    // MARK: - Text Field Set (mirror of Android TD-58)
+    //
+    // Two-path strategy:
+    //   1) Public path — locate the first-responder UITextField in the window's
+    //      view hierarchy. SwiftUI TextField's underlying UITextField IS reachable
+    //      when in focus. Set .text + post .editingChanged + notify.
+    //   2) Private SPI fallback — for SwiftUI primitives whose first responder
+    //      is a hosting view (not a UITextField directly), walk the window's
+    //      accessibility tree for an element with the .editable trait or
+    //      `accessibilityElementIsFocused()` true, and call the private SPI
+    //      `_setAccessibilityValue:forceNotification:` to push the value onto
+    //      the AX backing element. Post UIAccessibility.layoutChanged so any
+    //      @State / @Binding observers fire.
+    //
+    // Always returns 200 OK. Body: {"ok": true|false, "path": "uitextfield"|"private-spi"|"none", ...}
+    private func handleTextFieldSet(_ conn: NWConnection, req: String) {
+        let body = extractBody(req)
+        let value = extractJSONString(body, key: "value") ?? ""
+        DispatchQueue.main.async {
+            // Path 1: public UITextField first-responder
+            if let field = self.findFocusedTextField() {
+                let isSecure = field.isSecureTextEntry
+                // Clear existing then insert (selectAll + insertText preserves SwiftUI binding)
+                let start = field.beginningOfDocument
+                let end = field.endOfDocument
+                field.selectedTextRange = field.textRange(from: start, to: end)
+                field.insertText(value)
+                field.sendActions(for: .editingChanged)
+                let final = field.text ?? ""
+                let ok = final.contains(value) || isSecure
+                self.send(conn, status: "200 OK", type: "application/json",
+                          body: "{\"ok\":\(ok),\"path\":\"uitextfield\",\"value\":\"\(self.escJSON(value))\",\"final_len\":\(final.count),\"secure\":\(isSecure)}")
+                return
+            }
+            // Path 2: private SPI on focused AX element
+            if let axElement = self.findFocusedAXElement() {
+                let selector = NSSelectorFromString("_setAccessibilityValue:forceNotification:")
+                if axElement.responds(to: selector) {
+                    // _setAccessibilityValue:forceNotification: takes (id, BOOL).
+                    // Use NSInvocation via objc_msgSend through performSelector(_:with:with:).
+                    _ = (axElement as AnyObject).perform(selector, with: value as NSString, with: NSNumber(value: true))
+                    UIAccessibility.post(notification: .layoutChanged, argument: nil)
+                    self.send(conn, status: "200 OK", type: "application/json",
+                              body: "{\"ok\":true,\"path\":\"private-spi\",\"value\":\"\(self.escJSON(value))\"}")
+                    return
+                }
+            }
+            self.send(conn, status: "200 OK", type: "application/json",
+                      body: "{\"ok\":false,\"path\":\"none\",\"error\":\"no focused text field or AX element\"}")
+        }
+    }
+
+    private func findFocusedTextField() -> UITextField? {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap(\.windows)
+            .first(where: { $0.isKeyWindow }) else { return nil }
+        return findFirstResponderTextField(in: window)
+    }
+
+    private func findFirstResponderTextField(in view: UIView) -> UITextField? {
+        if let tf = view as? UITextField, tf.isFirstResponder { return tf }
+        for sub in view.subviews {
+            if let hit = findFirstResponderTextField(in: sub) { return hit }
+        }
+        return nil
+    }
+
+    // Walks the window's accessibility tree for the focused element. Public API
+    // doesn't expose "is focused" directly on every AX element; we look for
+    // `.isEditable`-trait-bearing elements and prefer those with the `.focused`
+    // sentinel state via accessibilityElementIsFocused() (UIAccessibilityFocus
+    // protocol — public). Falls back to the first element with the .text /
+    // .searchField trait when no focus is reported.
+    private func findFocusedAXElement() -> NSObject? {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap(\.windows)
+            .first(where: { $0.isKeyWindow }) else { return nil }
+        var visited: Set<ObjectIdentifier> = []
+        return descendForFocusedAX(window, visited: &visited)
+    }
+
+    private func descendForFocusedAX(_ obj: AnyObject, visited: inout Set<ObjectIdentifier>) -> NSObject? {
+        guard let ns = obj as? NSObject else { return nil }
+        let oid = ObjectIdentifier(ns)
+        if visited.contains(oid) { return nil }
+        visited.insert(oid)
+        // Prefer a focused element with editable/text trait
+        let traits = ns.accessibilityTraits
+        let textLike = traits.contains(.searchField) || traits.rawValue & (1 << 18) != 0 // .keyboardKey-ish editable bit (defensive)
+        if ns.isAccessibilityElement && (textLike || traits.rawValue != 0) && ns.accessibilityElementIsFocused() {
+            return ns
+        }
+        if let children = ns.accessibilityElements as? [AnyObject] {
+            for c in children {
+                if let hit = descendForFocusedAX(c, visited: &visited) { return hit }
+            }
+        }
+        let n = ns.accessibilityElementCount()
+        if n > 0 && n != NSNotFound {
+            for i in 0..<n {
+                if let c = ns.accessibilityElement(at: i),
+                   let hit = descendForFocusedAX(c as AnyObject, visited: &visited) { return hit }
+            }
+        }
+        if let v = ns as? UIView {
+            for sub in v.subviews {
+                if let hit = descendForFocusedAX(sub, visited: &visited) { return hit }
+            }
+        }
+        return nil
     }
 }
 #endif
