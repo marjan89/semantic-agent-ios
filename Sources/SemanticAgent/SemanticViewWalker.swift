@@ -45,6 +45,13 @@ final class SemanticWalker {
         let screenName = resolveScreenName(window)
         walkView(window, depth: 0, parentExternal: false)
 
+        // TD-30 fix: window-level AX tree walk. SwiftUI Text inside TabView
+        // page (and other lazy SwiftUI containers) registers virtual AX
+        // elements via the system AX tree, not via UIView.accessibilityElements
+        // on the page host. Probe window-level AX tree and synthesize any
+        // labels not already emitted by the standard descent.
+        harvestWindowAXTree(window)
+
         let a11yFonts = harvestAccessibilityFonts(in: window)
         if !a11yFonts.isEmpty {
             mergeA11yFontData(a11yFonts)
@@ -338,6 +345,106 @@ final class SemanticWalker {
         synthesizeAccessibilityChildren(view, depth: depth)
     }
 
+    // MARK: - TD-30 Window AX Tree Harvest
+
+    private func harvestWindowAXTree(_ window: UIWindow) {
+        var seenLabels: Set<String> = []
+        for el in elements {
+            if let c = el.content, !c.isEmpty { seenLabels.insert(c) }
+            if let l = el.a11yLabel, !l.isEmpty { seenLabels.insert(l) }
+        }
+        var visited: Set<ObjectIdentifier> = []
+        var emittedCount = 0
+        harvestAXElement(window, seenLabels: &seenLabels, visited: &visited, emittedCount: &emittedCount)
+        if emittedCount > 0 {
+            log += "TD-30 harvestWindowAXTree: emitted \(emittedCount) new SYNTH elements\n"
+        }
+    }
+
+    private func harvestAXElement(_ axEl: Any, seenLabels: inout Set<String>, visited: inout Set<ObjectIdentifier>, emittedCount: inout Int) {
+        guard let obj = axEl as? NSObject else { return }
+        let oid = ObjectIdentifier(obj)
+        if visited.contains(oid) { return }
+        visited.insert(oid)
+        // TD-36 safety: skip private/test-infrastructure classes that raise on
+        // accessibility property probes (UITextEffectsWindow, _UIRemoteKeyboardWindow,
+        // XCTest support views). Only descend UIView + UIAccessibilityElement.
+        if !(obj is UIView) && !(obj is UIAccessibilityElement) { return }
+        let cls = String(describing: type(of: obj))
+        if cls.hasPrefix("UITextEffectsWindow") || cls.hasPrefix("_UIRemoteKeyboardWindow") ||
+           cls.hasPrefix("XCTest") || cls.hasPrefix("XC") { return }
+
+        if let label = obj.accessibilityLabel, !label.isEmpty, !seenLabels.contains(label) {
+            let frame: CGRect
+            if let v = obj as? UIView {
+                frame = v.convert(v.bounds, to: nil)
+            } else if let container = (obj as? UIAccessibilityElement)?.accessibilityContainer as? UIView {
+                frame = UIAccessibility.convertToScreenCoordinates(obj.accessibilityFrame, in: container)
+            } else {
+                frame = obj.accessibilityFrame
+            }
+            if frame.width > 0, frame.height > 0 {
+                let traits = obj.accessibilityTraits
+                let synType: String
+                if traits.contains(.button) { synType = "button" }
+                else if traits.contains(.image) { synType = "image" }
+                else { synType = "text" }
+
+                let syn = SemanticElement(
+                    id: slugify(label),
+                    platformId: "",
+                    semanticType: synType,
+                    content: label,
+                    bounds: frame,
+                    zIndex: globalZ,
+                    clickable: traits.contains(.button) || traits.contains(.link),
+                    enabled: true,
+                    render: nil,
+                    accessible: true,
+                    a11yLabel: label,
+                    a11yId: (obj as? UIAccessibilityIdentification)?.accessibilityIdentifier,
+                    fontFamily: nil, fontSize: nil, fontWeight: nil, textColor: nil,
+                    lineCount: nil, truncated: nil,
+                    background: nil, foreground: nil, cornerRadius: nil,
+                    imageResource: nil, imagePath: nil,
+                    borderWidth: 0, borderColor: nil
+                )
+                elements.append(syn)
+                seenLabels.insert(label)
+                globalZ += 1
+                emittedCount += 1
+                log += "TD-30 SYNTH-WIN z=\(globalZ - 1) label=\"\(label.prefix(40))\" type=\(synType) frame=(\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height)))\n"
+            }
+        }
+
+        // Recurse children via standard + private paths
+        if let elArr = obj.accessibilityElements as? [Any] {
+            for child in elArr {
+                harvestAXElement(child, seenLabels: &seenLabels, visited: &visited, emittedCount: &emittedCount)
+            }
+        }
+        let count = obj.accessibilityElementCount()
+        if count > 0 && count != NSNotFound {
+            for i in 0..<count {
+                if let el = obj.accessibilityElement(at: i) {
+                    harvestAXElement(el, seenLabels: &seenLabels, visited: &visited, emittedCount: &emittedCount)
+                }
+            }
+        }
+        // Private SPI _accessibilityElements probe REMOVED — TD-36 investigation
+        // showed agent crash during /semantic post-tab-switch, hypothesized to be
+        // an NSException raised by the SPI accessor on certain views (e.g.
+        // UITextEffectsWindow / private hosting subclasses). Swift try? doesn't
+        // catch Obj-C exceptions. Public accessibilityElements + recursive
+        // subview descent already discovered T18 Tab Alpha Content + T25 Items.
+        // For UIView, also descend regular subviews to discover deeper AX-only elements
+        if let v = obj as? UIView {
+            for sub in v.subviews {
+                harvestAXElement(sub, seenLabels: &seenLabels, visited: &visited, emittedCount: &emittedCount)
+            }
+        }
+    }
+
     // MARK: - Accessibility Synthesis
 
     private func synthesizeAccessibilityChildren(_ view: UIView, depth: Int) {
@@ -353,6 +460,11 @@ final class SemanticWalker {
                 }
             }
         }
+
+        // TD-36 isolation: SPI key probe REMOVED from synthesizeAccessibilityChildren
+        // (was firing on every walked view, potentially raising NSException on
+        // private classes). harvestWindowAXTree handles SwiftUI virtual AX
+        // discovery scoped to window-recursion.
 
         guard !axElements.isEmpty else { return }
 
