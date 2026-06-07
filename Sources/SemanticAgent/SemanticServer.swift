@@ -86,6 +86,12 @@ private final class SemanticServer {
                 self.handleAnimations(conn, req: req)
             } else if req.hasPrefix("GET /debug-log") {
                 self.handleDebugLog(conn)
+            } else if req.hasPrefix("GET /walk-log") {
+                // TD-30 debug: expose the cached walk's traversal log.
+                DispatchQueue.main.async {
+                    let r = self.cachedOrFreshWalk()
+                    self.send(conn, status: "200 OK", type: "text/plain", body: r.log)
+                }
             } else if req.hasPrefix("GET /viewdebug-log") {
                 self.send(conn, status: "200 OK", type: "text/plain",
                           body: "activationLog:\n\(ViewDebugBridge.activationLog)\nlastLog:\n\(ViewDebugBridge.lastLog)")
@@ -495,7 +501,19 @@ private final class SemanticServer {
             let headers = (response["headers"] as? [String: String]) ?? ["Content-Type": "application/json"]
             let responseBody: Data
             if let bodyObj = response["body"] {
-                responseBody = (try? JSONSerialization.data(withJSONObject: bodyObj)) ?? Data()
+                if let s = bodyObj as? String {
+                    NSLog("[TD-34][mock] body type=string len=\(s.count)")
+                    responseBody = s.data(using: .utf8) ?? Data()
+                } else if let d = bodyObj as? Data {
+                    NSLog("[TD-34][mock] body type=data len=\(d.count)")
+                    responseBody = d
+                } else if JSONSerialization.isValidJSONObject(bodyObj) {
+                    NSLog("[TD-34][mock] body type=json class=\(type(of: bodyObj))")
+                    responseBody = (try? JSONSerialization.data(withJSONObject: bodyObj)) ?? Data()
+                } else {
+                    NSLog("[TD-34][mock] body UNSUPPORTED type=\(type(of: bodyObj)) — defaulting empty")
+                    responseBody = Data()
+                }
             } else {
                 responseBody = Data()
             }
