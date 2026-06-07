@@ -9,6 +9,13 @@ final class SemanticAgent {
     static let shared = SemanticAgent()
     private var server: SemanticServer?
 
+    // TD-75: app-registered login handler. App sets this in onAppear of the
+    // gated screen (or globally in AppDelegate). POST /login invokes it with
+    // credentials from the request body; handler completes with (success, error).
+    // Mirrors Android TD-66 (e658252) — same shape as semantic-agent-android's
+    // AgentLoginHandler.
+    nonisolated(unsafe) static var loginHandler: ((_ email: String, _ password: String, _ completion: @escaping (Bool, String?) -> Void) -> Void)?
+
     func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
         guard server == nil else { return }
         IdleResourceRegistry.shared.installHooks()
@@ -128,6 +135,9 @@ private final class SemanticServer {
             } else if req.hasPrefix("POST /text-field/set") {
                 self.agentLog("POST", "/text-field/set", durationMs: 0)
                 self.handleTextFieldSet(conn, req: req)
+            } else if req.hasPrefix("POST /login") {
+                self.agentLog("POST", "/login", durationMs: 0)
+                self.handleLogin(conn, req: req)
             } else if req.hasPrefix("POST /keyboard/dismiss") {
                 self.agentLog("POST", "/keyboard/dismiss", durationMs: 0)
                 DispatchQueue.main.async {
@@ -575,6 +585,46 @@ private final class SemanticServer {
         s.replacingOccurrences(of: "\\", with: "\\\\")
          .replacingOccurrences(of: "\"", with: "\\\"")
          .replacingOccurrences(of: "\n", with: "\\n")
+    }
+
+    // MARK: - Login (mirror of Android TD-66)
+    //
+    // POST /login body: {"email": "...", "password": "..."}
+    // Invokes app-registered SemanticAgent.loginHandler closure. App handles
+    // the actual auth flow (state mutation, navigation, side effects); agent
+    // just bridges the HTTP call to the handler. Response is the handler's
+    // (success, error?) result. Times out at 10s if the handler never calls
+    // completion (defensive — apps should always complete).
+    private func handleLogin(_ conn: NWConnection, req: String) {
+        let body = extractBody(req)
+        let email = extractJSONString(body, key: "email") ?? ""
+        let password = extractJSONString(body, key: "password") ?? ""
+        DispatchQueue.main.async {
+            guard let handler = SemanticAgent.loginHandler else {
+                self.send(conn, status: "200 OK", type: "application/json",
+                          body: "{\"ok\":false,\"error\":\"no login handler registered — set SemanticAgent.loginHandler\"}")
+                return
+            }
+            var completed = false
+            let timeoutWork = DispatchWorkItem {
+                if !completed {
+                    completed = true
+                    self.send(conn, status: "200 OK", type: "application/json",
+                              body: "{\"ok\":false,\"error\":\"login handler timeout (10s)\"}")
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10.0, execute: timeoutWork)
+            handler(email, password) { success, error in
+                DispatchQueue.main.async {
+                    if completed { return }
+                    completed = true
+                    timeoutWork.cancel()
+                    let errFragment = error.map { ",\"error\":\"\(self.escJSON($0))\"" } ?? ""
+                    self.send(conn, status: "200 OK", type: "application/json",
+                              body: "{\"ok\":\(success)\(errFragment)}")
+                }
+            }
+        }
     }
 
     // MARK: - Text Field Set (mirror of Android TD-58)
