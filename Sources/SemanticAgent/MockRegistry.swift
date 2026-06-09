@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 
 // MARK: - Mock Registry Protocol
@@ -92,8 +91,8 @@ final class MockRegistry: MockRegistryProtocol {
 
 // MARK: - URLProtocol Adapter
 
-final class MockURLProtocol: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool {
+public final class MockURLProtocol: URLProtocol {
+    public override class func canInit(with request: URLRequest) -> Bool {
         guard let url = request.url else { return false }
         if url.host == "127.0.0.1" || url.host == "localhost" { return false }
         let can = MockRegistry.shared.canHandle(url: url, method: request.httpMethod ?? "GET")
@@ -103,9 +102,9 @@ final class MockURLProtocol: URLProtocol {
         return can
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    public override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
-    override func startLoading() {
+    public override func startLoading() {
         guard let url = request.url,
               let mock = MockRegistry.shared.handle(url: url, method: request.httpMethod ?? "GET") else {
             client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
@@ -126,9 +125,9 @@ final class MockURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    public override func stopLoading() {}
 
-    static func install() {
+    public static func install() {
         URLProtocol.registerClass(MockURLProtocol.self)
         swizzleSessionConfiguration()
     }
@@ -171,4 +170,3 @@ extension URLSessionConfiguration {
         return classes
     }
 }
-#endif
