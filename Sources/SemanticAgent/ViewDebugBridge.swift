@@ -1,4 +1,3 @@
-#if DEBUG
 import UIKit
 
 struct ViewDebugProperty {
@@ -10,7 +9,7 @@ struct ViewDebugProperty {
     let lineLimit: Int?
 }
 
-enum ViewDebugBridge {
+public enum ViewDebugBridge {
 
     static var lastLog = ""
     static var activationLog = ""
@@ -18,7 +17,7 @@ enum ViewDebugBridge {
     private static var propertiesEnabled = false
     private static var activationFailed = false
 
-    static func activate() {
+    public static func activate() {
         guard !propertiesEnabled, !activationFailed else { return }
         enableViewDebugProperties()
         propertiesEnabled = true
@@ -404,4 +403,3 @@ enum ViewDebugBridge {
     }
 
 }
-#endif

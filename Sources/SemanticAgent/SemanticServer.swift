@@ -1,22 +1,23 @@
-#if DEBUG
 import UIKit
 import Network
 import SwiftUI
 // MARK: - Public API
 
 @MainActor
-final class SemanticAgent {
-    static let shared = SemanticAgent()
+public final class SemanticAgent {
+    public static let shared = SemanticAgent()
     private var server: SemanticServer?
+
+    private init() {}
 
     // TD-75: app-registered login handler. App sets this in onAppear of the
     // gated screen (or globally in AppDelegate). POST /login invokes it with
     // credentials from the request body; handler completes with (success, error).
     // Mirrors Android TD-66 (e658252) — same shape as semantic-agent-android's
     // AgentLoginHandler.
-    nonisolated(unsafe) static var loginHandler: ((_ email: String, _ password: String, _ completion: @escaping (Bool, String?) -> Void) -> Void)?
+    public nonisolated(unsafe) static var loginHandler: ((_ email: String, _ password: String, _ completion: @escaping (Bool, String?) -> Void) -> Void)?
 
-    func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
+    public func start(port: UInt16 = UInt16(ProcessInfo.processInfo.environment["IDB_AGENT_PORT"] ?? "9877") ?? 9877) {
         guard server == nil else { return }
         IdleResourceRegistry.shared.installHooks()
         // MockURLProtocol.install() moved to AppDelegate.init() for timing
@@ -24,7 +25,7 @@ final class SemanticAgent {
         server?.start()
     }
 
-    func stop() {
+    public func stop() {
         server?.stop()
         server = nil
     }
@@ -741,4 +742,3 @@ private final class SemanticServer {
         return nil
     }
 }
-#endif
