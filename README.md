@@ -1,3 +1,9 @@
+> ⚠ **ABSORBED INTO `idb` @ [github.com/marjan89/idb](https://github.com/marjan89/idb)** (subdir [`agent/`](https://github.com/marjan89/idb/tree/main/agent)).
+> This repo is **read-only history reference** as of `idb-v0.4.0` (Epic G-iOS, 2026-06-10).
+> New work lands in `idb`. Last live SHA here: `441a655`.
+
+---
+
 # Semantic Agent — iOS
 
 Embeddable HTTP server for UI automation. Walks the SwiftUI/UIKit view hierarchy, exposes semantic elements via YAML, handles auth/navigation/idle detection via REST endpoints.
